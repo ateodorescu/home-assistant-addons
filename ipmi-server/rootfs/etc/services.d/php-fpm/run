@@ -1,0 +1,11 @@
+#!/usr/bin/with-contenv bashio
+# shellcheck shell=bash
+# ==============================================================================
+# Home Assistant Community Add-on: IPMI server
+# Runs the PHP-FPM daemon
+# ==============================================================================
+
+bashio::log.info "Starting PHP-FPM..."
+
+#/usr/sbin/php-fpm* -F
+exec php-fpm"$PHPVERS" --nodaemonize

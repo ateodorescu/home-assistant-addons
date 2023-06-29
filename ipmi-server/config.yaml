@@ -1,0 +1,29 @@
+name: IPMItool server
+version: "1.0.0"
+slug: ipmi-server
+description: IPMItool server
+url: "https://github.com/ateodorescu/home-assistant-addons"
+arch:
+  - armhf
+  - armv7
+  - aarch64
+  - amd64
+  - i386
+
+panel_icon: mdi:server
+init: false
+hassio_api: true
+ingress: true
+ingress_stream: true
+
+options:
+  log_level: info
+
+schema:
+  log_level: list(trace|debug|info|notice|warning|error|fatal)?
+
+ports:
+  80/tcp: 9595
+
+ports_description:
+  80/tcp: "Not required for Ingress"

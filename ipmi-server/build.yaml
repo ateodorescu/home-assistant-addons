@@ -1,0 +1,10 @@
+---
+build_from:
+  aarch64: ghcr.io/hassio-addons/base:14.0.2
+  amd64: ghcr.io/hassio-addons/base:14.0.2
+  armhf: ghcr.io/hassio-addons/base:14.0.2
+  armv7: ghcr.io/hassio-addons/base:14.0.2
+  i386: ghcr.io/hassio-addons/base:14.0.2
+codenotary:
+  base_image: ateodorescu@gmail.com
+  signer: ateodorescu@gmail.com

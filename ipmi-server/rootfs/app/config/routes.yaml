@@ -1,0 +1,34 @@
+controllers:
+    resource:
+        path: ../src/Controller/
+        namespace: App\Controller
+    type: attribute
+
+app_ipmi:
+    path: /
+    controller: App\Controller\IpmiController::index
+
+app_ipmi_sensors:
+    path: /sensors
+    controller: App\Controller\IpmiController::sensors
+
+app_ipmi_on:
+    path: /power_on
+    controller: App\Controller\IpmiController::power_on
+
+app_ipmi_off:
+    path: /power_off
+    controller: App\Controller\IpmiController::power_off
+
+app_ipmi_cycle:
+    path: /power_cycle
+    controller: App\Controller\IpmiController::power_cycle
+
+app_ipmi_reset:
+    path: /power_reset
+    controller: App\Controller\IpmiController::power_reset
+
+app_ipmi_shutdown:
+    path: /soft_shutdown
+    controller: App\Controller\IpmiController::soft_shutdown
+

@@ -1,0 +1,13 @@
+#!/usr/bin/with-contenv bashio
+# shellcheck shell=bash
+# ==============================================================================
+# Home Assistant Community Add-on: IPMI server
+# Runs the Nginx daemon
+# ==============================================================================
+
+# Wait for PHP-FPM to become available
+bashio::net.wait_for 9000
+
+bashio::log.info "Starting NGinx..."
+
+nginx -c /etc/nginx/nginx.conf
