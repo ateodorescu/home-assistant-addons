@@ -207,7 +207,8 @@ class IpmiController
         ];
 
         $sensorData = [
-            'power' => []
+            'power' => [],
+            'time' => []
         ];
         $states = [];
         $cmd = $this->getCommand($request);
@@ -227,20 +228,36 @@ class IpmiController
                 if ($ret) {
                     // extract power usage
                     $results = explode(PHP_EOL, $ret);
-                    $results = array_values(array_filter($results, function ($line) {
-                        return str_contains($line, 'Watts');
-                    }));
 
                     if (!empty($results)) {
                         foreach ($results as $result) {
-                            if (!empty($result)) {
-                                $values = array_map('trim', explode(':', $result));
-                                [$description, $value] = $values;
-                                $id = $this->generateId($description);
-                                $value = trim(str_replace('Watts', '', $value));
+                            $extract = false;
+                            $sensorType = 'power';
 
-                                $sensorData['power'][$id] = $description;
-                                $states[$id] = $value;
+                            if (!empty($result)) {
+                                if (str_contains($result, 'Watts')) {
+                                    $values = array_map('trim', explode(':', $result));
+                                    [$description, $value] = $values;
+                                    $value = trim(str_replace('Watts', '', $value));
+                                    $extract = true;
+                                }
+                                else if (str_contains($result, 'Seconds')) {
+                                    $description = 'Sampling period';
+                                    $pattern="/" . $description . ":\K.+?(?=Seconds)/";
+                                    $success = preg_match($pattern, $result, $match);
+                                    $sensorType = 'time';
+
+                                    if ($success) {
+                                        $extract = true;
+                                        $value = trim($match[0]);
+                                    }
+                                }
+
+                                if ($extract) {
+                                    $id = $this->generateId($description);
+                                    $sensorData[$sensorType][$id] = $description;
+                                    $states[$id] = $value;
+                                }
                             }
                         }
                     }
