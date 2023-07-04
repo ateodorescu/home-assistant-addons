@@ -13,4 +13,4 @@ with some results.
 Just copy the `ipmi-server` to your `addon` folder of your HASS installation.
 
 ## What should I do with it?
-Have a look at this [`ipmitool` integration](https://github.com/ateodorescu/home-assistant-ipmitool) for HASS.
+Have a look at this [`ipmi` integration](https://github.com/ateodorescu/home-assistant-ipmi) for HASS.
