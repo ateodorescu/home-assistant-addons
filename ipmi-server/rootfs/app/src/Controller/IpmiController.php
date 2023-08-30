@@ -20,6 +20,10 @@ class IpmiController
         'voltage' => 'Volts',
         'fan' => 'RPM'
     ];
+    private array $debug = [];
+    const COMMAND_TIMEOUT = 50;
+    const DEFAULT_PORT = 623;
+    const DEFAULT_USERNAME = 'ADMIN';
 
     public function index(Request $request): JsonResponse
     {
@@ -33,7 +37,7 @@ class IpmiController
             }
         }
 
-//        print_r($info);
+        $info['debug'] = implode("\n", $this->debug);
 
         return new JsonResponse($info);
     }
@@ -79,12 +83,15 @@ class IpmiController
     {
         $done = false;
         $cmd = $this->getCommand($request);
-        foreach ($this->ipmiTypes as $ipmi_type) {
-            $ret = $this->runCommand(array_merge($cmd, ['-I', $ipmi_type, 'chassis', 'power', $type]));
 
-            if ($ret) {
-                $done = true;
-                break;
+        if ($cmd !== false) {
+            foreach ($this->ipmiTypes as $ipmi_type) {
+                $ret = $this->runCommand(array_merge($cmd, ['-I', $ipmi_type, 'chassis', 'power', $type]));
+
+                if ($ret) {
+                    $done = true;
+                    break;
+                }
             }
         }
 
@@ -96,26 +103,39 @@ class IpmiController
     private function runCommand($command): bool|string
     {
         $proc = new Process($command);
-        $proc->setTimeout(1200);
+        $proc->setTimeout(self::COMMAND_TIMEOUT);
         $proc->run();
         $output = $proc->getOutput();
         $exitCode = $proc->stop();
 
         if ($exitCode) {
-//            throw new Exception($proc->getErrorOutput());
+            // let's log this error
+            $message = "Error occurred when running \"" . implode(" ", $command) . "\".\n" . $proc->getErrorOutput();
+            $this->debug[] = $message;
+            error_log($message);
             return false;
         }
 
         return $output;
     }
 
-    private function getCommand(Request $request): array
+    private function getCommand(Request $request): array|bool
     {
         $query = $request->query;
+        $host = $query->get('host');
+
+        if (empty($host)) {
+            $message = 'No hostname provided!';
+            $this->debug[] = $message;
+            error_log($message);
+
+            return false;
+        }
+
         $ipmi = [
-            'host' => $query->get('host'),
-            'port' => $query->get('port', 623),
-            'user' => $query->get('user', 'ADMIN'),
+            'host' => $host,
+            'port' => $query->get('port', self::DEFAULT_PORT),
+            'user' => $query->get('user', self::DEFAULT_USERNAME),
             'password' => $query->get('password', '')
         ];
 
@@ -136,42 +156,48 @@ class IpmiController
         $cmd = $this->getCommand($request);
         $found = false;
         $on = false;
+        $error = 'Wrong connection data provided!';
 
-        try {
-            foreach ($this->ipmiTypes as $ipmi_type) {
-                $ret = $this->runCommand(array_merge($cmd, ['-I', $ipmi_type, 'bmc', 'info']));
-
-                if ($ret) {
-                    $results = explode(PHP_EOL, $ret);
-                    $device = $this->extractValuesFromResults($results);
-
-                    $ret = $this->runCommand(array_merge($cmd, ['-I', $ipmi_type, 'fru']));
+        if ($cmd === false) {
+            $response['message'] = $error;
+        }
+        else {
+            try {
+                foreach ($this->ipmiTypes as $ipmi_type) {
+                    $ret = $this->runCommand(array_merge($cmd, ['-I', $ipmi_type, 'bmc', 'info']));
 
                     if ($ret) {
                         $results = explode(PHP_EOL, $ret);
-                        $device = array_merge($device, $this->extractValuesFromResults($results));
+                        $device = $this->extractValuesFromResults($results);
+
+                        $ret = $this->runCommand(array_merge($cmd, ['-I', $ipmi_type, 'fru']));
+
+                        if ($ret) {
+                            $results = explode(PHP_EOL, $ret);
+                            $device = array_merge($device, $this->extractValuesFromResults($results));
+                        }
+
+                        $ret = $this->runCommand(array_merge($cmd, ['-I', $ipmi_type, 'chassis', 'power', 'status']));
+
+                        if ($ret) {
+                            $on = (trim($ret) === "Chassis Power is on");
+                        }
+
+                        $found = true;
+                        break;
                     }
-
-                    $ret = $this->runCommand(array_merge($cmd, ['-I', $ipmi_type, 'chassis', 'power', 'status']));
-
-                    if ($ret) {
-                        $on = (trim($ret) === "Chassis Power is on");
-                    }
-
-                    $found = true;
-                    break;
                 }
-            }
 
-            if ($found) {
-                $response['success'] = true;
-                $response['device'] = $device;
-                $response['power_on'] = $on;
-            } else {
-                $response['message'] = 'Wrong connection data provided!';
+                if ($found) {
+                    $response['success'] = true;
+                    $response['device'] = $device;
+                    $response['power_on'] = $on;
+                } else {
+                    $response['message'] = $error;
+                }
+            } catch (Exception $exception) {
+                $response['message'] = $exception->getMessage();
             }
-        } catch (Exception $exception) {
-            $response['message'] = $exception->getMessage();
         }
 
         return $response;
@@ -214,68 +240,69 @@ class IpmiController
         $cmd = $this->getCommand($request);
         $found = false;
 
-        try {
-            foreach ($this->sensorTypes as $type => $unit) {
-                $data = $this->getSensorsByType($request, $type, $unit);
-                $found = $found || $data['found'];
-                $sensorData[$type] = $data['sensors'];
-                $states = array_merge($states, $data['states']);
-            }
+        if ($cmd !== false) {
+            try {
+                foreach ($this->sensorTypes as $type => $unit) {
+                    $data = $this->getSensorsByType($request, $type, $unit);
+                    $found = $found || $data['found'];
+                    $sensorData[$type] = $data['sensors'];
+                    $states = array_merge($states, $data['states']);
+                }
 
-            foreach ($this->ipmiTypes as $ipmi_type) {
-                $ret = $this->runCommand(array_merge($cmd, ['-I', $ipmi_type, 'dcmi', 'power', 'reading']));
+                foreach ($this->ipmiTypes as $ipmi_type) {
+                    $ret = $this->runCommand(array_merge($cmd, ['-I', $ipmi_type, 'dcmi', 'power', 'reading']));
 
-                if ($ret) {
-                    // extract power usage
-                    $results = explode(PHP_EOL, $ret);
+                    if ($ret) {
+                        // extract power usage
+                        $results = explode(PHP_EOL, $ret);
 
-                    if (!empty($results)) {
-                        foreach ($results as $result) {
-                            $extract = false;
-                            $sensorType = 'power';
+                        if (!empty($results)) {
+                            foreach ($results as $result) {
+                                $extract = false;
+                                $sensorType = 'power';
 
-                            if (!empty($result)) {
-                                if (str_contains($result, 'Watts')) {
-                                    $values = array_map('trim', explode(':', $result));
-                                    [$description, $value] = $values;
-                                    $value = trim(str_replace('Watts', '', $value));
-                                    $extract = true;
-                                }
-                                else if (str_contains($result, 'Seconds')) {
-                                    $description = 'Sampling period';
-                                    $pattern="/" . $description . ":\K.+?(?=Seconds)/";
-                                    $success = preg_match($pattern, $result, $match);
-                                    $sensorType = 'time';
-
-                                    if ($success) {
+                                if (!empty($result)) {
+                                    if (str_contains($result, 'Watts')) {
+                                        $values = array_map('trim', explode(':', $result));
+                                        [$description, $value] = $values;
+                                        $value = trim(str_replace('Watts', '', $value));
                                         $extract = true;
-                                        $value = trim($match[0]);
-                                    }
-                                }
+                                    } else if (str_contains($result, 'Seconds')) {
+                                        $description = 'Sampling period';
+                                        $pattern = "/" . $description . ":\K.+?(?=Seconds)/";
+                                        $success = preg_match($pattern, $result, $match);
+                                        $sensorType = 'time';
 
-                                if ($extract) {
-                                    $id = $this->generateId($description);
-                                    $sensorData[$sensorType][$id] = $description;
-                                    $states[$id] = $value;
+                                        if ($success) {
+                                            $extract = true;
+                                            $value = trim($match[0]);
+                                        }
+                                    }
+
+                                    if ($extract) {
+                                        $id = $this->generateId($description);
+                                        $sensorData[$sensorType][$id] = $description;
+                                        $states[$id] = $value;
+                                    }
                                 }
                             }
                         }
+
+                        $found = true;
+                        break;
                     }
-
-                    $found = true;
-                    break;
                 }
-            }
 
-            if ($found) {
-                $response['success'] = true;
-                $response['sensors'] = $sensorData;
-                $response['states'] = $states;
-            } else {
-                $response['message'] = 'Wrong connection data provided!';
+                if ($found) {
+                    $response['success'] = true;
+                    $response['sensors'] = $sensorData;
+                    $response['states'] = $states;
+                } else {
+                    $response['message'] = 'Wrong connection data provided!';
+                }
+            } catch (Exception $exception) {
+                $response['message'] = $exception->getMessage();
             }
-        } catch (Exception $exception) {
-            $response['message'] = $exception->getMessage();
         }
 
         return $response;
@@ -289,33 +316,34 @@ class IpmiController
         $cmd = $this->getCommand($request);
         $found = false;
 
-        foreach ($this->ipmiTypes as $ipmi_type) {
-            $ret = $this->runCommand(array_merge($cmd, ['-I', $ipmi_type, 'sdr', 'type', $type]));
+        if (!$cmd !== false) {
+            foreach ($this->ipmiTypes as $ipmi_type) {
+                $ret = $this->runCommand(array_merge($cmd, ['-I', $ipmi_type, 'sdr', 'type', $type]));
 
-            if ($ret) {
-                $results = explode(PHP_EOL, $ret);
+                if ($ret) {
+                    $results = explode(PHP_EOL, $ret);
 
-                if (!empty($results)) {
-                    foreach ($results as $result) {
-                        if (!empty($result)) {
-                            $values = array_map('trim', explode('|', $result));
-                            [$description, $a, $b, $c, $value] = $values;
-                            $id = $this->generateId($description);
+                    if (!empty($results)) {
+                        foreach ($results as $result) {
+                            if (!empty($result)) {
+                                $values = array_map('trim', explode('|', $result));
+                                [$description, $a, $b, $c, $value] = $values;
+                                $id = $this->generateId($description);
 
-                            if (str_contains($value, $unit)) {
-                                $value = trim(str_replace($unit, '', $value));
+                                if (str_contains($value, $unit)) {
+                                    $value = trim(str_replace($unit, '', $value));
+                                } else {
+                                    $value = null;
+                                }
+
+                                $sensors[$id] = $description;
+                                $states[$id] = $value;
                             }
-                            else {
-                                $value = null;
-                            }
-
-                            $sensors[$id] = $description;
-                            $states[$id] = $value;
                         }
-                    }
 
-                    $found = true;
-                    break;
+                        $found = true;
+                        break;
+                    }
                 }
             }
         }
