@@ -316,7 +316,7 @@ class IpmiController
         $cmd = $this->getCommand($request);
         $found = false;
 
-        if (!$cmd !== false) {
+        if ($cmd !== false) {
             foreach ($this->ipmiTypes as $ipmi_type) {
                 $ret = $this->runCommand(array_merge($cmd, ['-I', $ipmi_type, 'sdr', 'type', $type]));
 
