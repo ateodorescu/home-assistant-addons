@@ -8,6 +8,10 @@ app_ipmi:
     path: /
     controller: App\Controller\IpmiController::index
 
+app_command:
+    path: /command
+    controller: App\Controller\IpmiController::command
+
 app_ipmi_sensors:
     path: /sensors
     controller: App\Controller\IpmiController::sensors

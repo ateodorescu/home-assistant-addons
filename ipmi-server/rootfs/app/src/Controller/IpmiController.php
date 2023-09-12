@@ -42,6 +42,19 @@ class IpmiController
         return new JsonResponse($info);
     }
 
+    public function command(Request $request): JsonResponse
+    {
+        $cmd = str_getcsv($request->get('params', ''), ' ', '"', '');
+        array_unshift($cmd, 'ipmitool');
+        $ret = $this->runCommand($cmd);
+        $done = ($ret !== false);
+
+        return new JsonResponse([
+            'success' => $done,
+            'output' => $done ? $ret : implode("\n", $this->debug)
+        ]);
+    }
+
     public function sensors(Request $request): JsonResponse
     {
         return new JsonResponse($this->getSensors($request));
