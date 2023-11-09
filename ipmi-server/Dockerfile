@@ -18,39 +18,35 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 # Setup base
 # hadolint ignore=DL3003
 # Install app dependencies
+
+RUN apk -U update
+RUN apk -U upgrade
+RUN apk -U add --no-cache \
+    ipmitool
+RUN apk -U add --no-cache \
+    nginx=1.24.0-r7
+
 ENV PHPVERS="81"
-RUN \
-    apk -U update && \
-    # hadolint ignore=DL3017
-    apk -U upgrade && \
-    apk -U add --no-cache \
-        ipmitool \
-        nginx=1.24.0-r6 \
-        php$PHPVERS \
-        php$PHPVERS-fpm \
-        php$PHPVERS-curl \
-        php$PHPVERS-dom \
-        php$PHPVERS-gettext \
-        php$PHPVERS-xml \
-        php$PHPVERS-simplexml \
-        php$PHPVERS-zip \
-        php$PHPVERS-zlib \
-        php$PHPVERS-gd \
-        php$PHPVERS-openssl \
-        php$PHPVERS-mysqli \
-        php$PHPVERS-pdo \
-        php$PHPVERS-pdo_mysql \
-        php$PHPVERS-pgsql \
-        php$PHPVERS-pdo_pgsql \
-        php$PHPVERS-sqlite3 \
-        php$PHPVERS-pdo_sqlite \
-        php$PHPVERS-json \
-        php$PHPVERS-mbstring \
-        php$PHPVERS-ctype \
-        php$PHPVERS-opcache \
-        php$PHPVERS-session \
-        php$PHPVERS-tokenizer \
-    && mkdir -p /app \    
+RUN apk -U add --no-cache \
+    php$PHPVERS \
+    php$PHPVERS-fpm \
+    php$PHPVERS-curl \
+    php$PHPVERS-dom \
+    php$PHPVERS-gettext \
+    php$PHPVERS-xml \
+    php$PHPVERS-simplexml \
+    php$PHPVERS-zip \
+    php$PHPVERS-zlib \
+    php$PHPVERS-gd \
+    php$PHPVERS-openssl \
+    php$PHPVERS-json \
+    php$PHPVERS-mbstring \
+    php$PHPVERS-ctype \
+    php$PHPVERS-opcache \
+    php$PHPVERS-session \
+    php$PHPVERS-tokenizer
+
+RUN mkdir -p /app \
     && mkdir /app/cache \
     && mkdir /var/tmp/nginx
 
