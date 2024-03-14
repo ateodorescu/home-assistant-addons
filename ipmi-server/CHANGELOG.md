@@ -5,6 +5,7 @@
 (for example one can provide "-C 17" to correctly connect to the ipmi server)
 - ability to chose what interface type to use when connecting to the server
   (if not provided then it will try to auto select it)
+- anonymize passwords in error messages
 
 ## 1.0.0
 
