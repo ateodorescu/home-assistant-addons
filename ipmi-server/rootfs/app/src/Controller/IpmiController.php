@@ -113,15 +113,22 @@ class IpmiController
     {
         $done = false;
         $cmd = $this->getCommand($request);
+        $interface = $request->query->get('interface', '');
 
         if ($cmd !== false) {
-            foreach ($this->ipmiTypes as $ipmi_type) {
-                $ret = $this->runCommand(array_merge($cmd, ['-I', $ipmi_type, 'chassis', 'power', $type]));
+            if (empty($interface)) {
+                foreach ($this->ipmiTypes as $interface) {
+                    $ret = $this->runCommand(array_merge($cmd, ['-I', $interface, 'chassis', 'power', $type]));
 
-                if ($ret) {
-                    $done = true;
-                    break;
+                    if ($ret) {
+                        $done = true;
+                        break;
+                    }
                 }
+            }
+            else {
+                $ret = $this->runCommand(array_merge($cmd, ['-I', $interface, 'chassis', 'power', $type]));
+                $done = $ret !== false;
             }
         }
 
@@ -314,13 +321,13 @@ class IpmiController
             'success' => false
         ];
 
+        $states = [];
         $sensorData = [];
 
         foreach ($this->unitsOfMeasure as $uom => $type) {
             $sensorData[$type] = [];
         }
 
-        $states = [];
         $cmd = $this->getCommand($request);
 
         if ($cmd !== false) {
@@ -350,6 +357,8 @@ class IpmiController
                             }
                         }
                     }
+
+                    $response['success'] = true;
                 }
 
                 $ret = $this->runCommand(array_merge($cmd, ['-I', $interface, 'dcmi', 'power', 'reading']));
@@ -366,7 +375,8 @@ class IpmiController
                             if (!empty($result)) {
                                 if (str_contains($result, 'Watts')) {
                                     $values = array_map('trim', explode(':', $result));
-                                    [$description, $value] = $values;
+                                    $description = $values[0];
+                                    $value = $values[1];
                                     $value = trim(str_replace('Watts', '', $value));
                                     $extract = true;
                                 } else if (str_contains($result, 'Seconds')) {
@@ -389,17 +399,15 @@ class IpmiController
                             }
                         }
                     }
-
-                    $response['success'] = true;
-                    $response['sensors'] = $sensorData;
-                    $response['states'] = $states;
-                } else {
-                    $response['message'] = 'Wrong connection data provided!';
                 }
+
             } catch (Exception $exception) {
                 $response['message'] = $exception->getMessage();
             }
         }
+
+        $response['sensors'] = $sensorData;
+        $response['states'] = $states;
 
         return $response;
     }
