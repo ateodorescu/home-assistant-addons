@@ -139,15 +139,26 @@ class IpmiController
 
     private function runCommand($command): bool|string
     {
-        $proc = new Process($command);
-        $proc->setTimeout(self::COMMAND_TIMEOUT);
-        $proc->run();
-        $output = $proc->getOutput();
-        $exitCode = $proc->stop();
+        $errorIntro = "Error occurred when running \"" . implode(" ", $command) . "\".\n" ;
 
-        if ($exitCode) {
+        try {
+            $proc = new Process($command);
+            $proc->setTimeout(self::COMMAND_TIMEOUT);
+            $proc->run();
+            $output = $proc->getOutput();
+            $exitCode = $proc->stop();
+
+            if ($exitCode) {
+                // let's log this error
+                $message = $this->anonymizePassword($errorIntro .$proc->getErrorOutput());
+                $this->debug[] = $message;
+                error_log($message);
+                return false;
+            }
+        }
+        catch (Exception $exception) {
             // let's log this error
-            $message = $this->anonymizePassword("Error occurred when running \"" . implode(" ", $command) . "\".\n" . $proc->getErrorOutput());
+            $message = $this->anonymizePassword($errorIntro . $exception->getMessage());
             $this->debug[] = $message;
             error_log($message);
             return false;
