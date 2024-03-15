@@ -8,7 +8,6 @@
 
 namespace App\Controller;
 
-use Symfony\Component\Config\Definition\Exception\Exception;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\Process\Process;
@@ -34,7 +33,7 @@ class IpmiController
 
     public function index(Request $request): JsonResponse
     {
-        $this->password = $request->query->get('password');
+        $this->password = $request->query->get('password', '');
         $info = $this->getDeviceInfo($request);
 
         if ($info['success']) {
@@ -137,7 +136,7 @@ class IpmiController
         ]);
     }
 
-    private function runCommand($command): bool|string
+    private function runCommand($command, $ignoreErrors = false): bool|string
     {
         $errorIntro = "Error occurred when running \"" . implode(" ", $command) . "\".\n" ;
 
@@ -152,15 +151,23 @@ class IpmiController
                 // let's log this error
                 $message = $this->anonymizePassword($errorIntro .$proc->getErrorOutput());
                 $this->debug[] = $message;
-                error_log($message);
+
+                if (!$ignoreErrors) {
+                    error_log($message);
+                }
+
                 return false;
             }
         }
-        catch (Exception $exception) {
+        catch (\Exception $exception) {
             // let's log this error
             $message = $this->anonymizePassword($errorIntro . $exception->getMessage());
             $this->debug[] = $message;
-            error_log($message);
+
+            if (!$ignoreErrors) {
+                error_log($message);
+            }
+
             return false;
         }
 
@@ -270,7 +277,7 @@ class IpmiController
                     $response['message'] = $error;
                 }
 
-            } catch (Exception $exception) {
+            } catch (\Exception $exception) {
                 $response['message'] = $exception->getMessage();
             }
         }
@@ -372,7 +379,7 @@ class IpmiController
                     $response['success'] = true;
                 }
 
-                $ret = $this->runCommand(array_merge($cmd, ['-I', $interface, 'dcmi', 'power', 'reading']));
+                $ret = $this->runCommand(array_merge($cmd, ['-I', $interface, 'dcmi', 'power', 'reading']), true);
 
                 if ($ret) {
                     // extract power usage
@@ -412,7 +419,7 @@ class IpmiController
                     }
                 }
 
-            } catch (Exception $exception) {
+            } catch (\Exception $exception) {
                 $response['message'] = $exception->getMessage();
             }
         }
