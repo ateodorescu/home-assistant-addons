@@ -1,3 +1,7 @@
+## 1.2.7
+- extract all sensors that are returned by `sdr list full` command because
+the `sensor` command does not work with all servers.
+
 ## 1.2.0
 
 - extract all sensors available on the server, including power and current sensors
