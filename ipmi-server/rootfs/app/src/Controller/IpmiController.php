@@ -350,74 +350,9 @@ class IpmiController
 
         if ($cmd !== false) {
             try {
-                $ret = $this->runCommand(array_merge($cmd, ['-I', $interface, 'sensor']));
-
-                if ($ret) {
-                    $lines = explode(PHP_EOL, $ret);
-
-                    if (!empty($lines)) {
-                        foreach ($lines as $line) {
-                            if (!empty($line)) {
-                                $values = array_map('trim', explode('|', $line));
-
-                                if ($values[3] === 'ok') {
-                                    $description = $values[0];
-                                    $id = $this->generateId($description);
-                                    $value = $values[1];
-                                    $uom = $values[2];
-                                    $type = array_key_exists($uom, $this->unitsOfMeasure) ? $this->unitsOfMeasure[$uom] : null;
-
-                                    if ($type) {
-                                        $sensorData[$type][$id] = $description;
-                                        $states[$id] = $value;
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    $response['success'] = true;
-                }
-
-                $ret = $this->runCommand(array_merge($cmd, ['-I', $interface, 'dcmi', 'power', 'reading']), true);
-
-                if ($ret) {
-                    // extract power usage
-                    $results = explode(PHP_EOL, $ret);
-
-                    if (!empty($results)) {
-                        foreach ($results as $result) {
-                            $extract = false;
-                            $sensorType = 'power';
-
-                            if (!empty($result)) {
-                                if (str_contains($result, 'Watts')) {
-                                    $values = array_map('trim', explode(':', $result));
-                                    $description = $values[0];
-                                    $value = $values[1];
-                                    $value = trim(str_replace('Watts', '', $value));
-                                    $extract = true;
-                                } else if (str_contains($result, 'Seconds')) {
-                                    $description = 'Sampling period';
-                                    $pattern = "/" . $description . ":\K.+?(?=Seconds)/";
-                                    $success = preg_match($pattern, $result, $match);
-                                    $sensorType = 'time';
-
-                                    if ($success) {
-                                        $extract = true;
-                                        $value = trim($match[0]);
-                                    }
-                                }
-
-                                if ($extract) {
-                                    $id = $this->generateId($description);
-                                    $sensorData[$sensorType][$id] = $description;
-                                    $states[$id] = $value;
-                                }
-                            }
-                        }
-                    }
-                }
+//                $response['success'] = $this->extractFromSensorCommand($cmd, $interface, $sensorData, $states);
+                $response['success'] = $this->extractFromSdrCommand($cmd, $interface, $sensorData, $states);
+                $this->extractFromDcmiPowerReadingCommand($cmd, $interface, $sensorData, $states);
 
             } catch (\Exception $exception) {
                 $response['message'] = $exception->getMessage();
@@ -428,6 +363,114 @@ class IpmiController
         $response['states'] = $states;
 
         return $response;
+    }
+
+    private function extractFromSensorCommand(array $cmd, string $interface, array &$sensorData, array &$states): bool
+    {
+        $ret = $this->runCommand(array_merge($cmd, ['-I', $interface, 'sensor']), true);
+
+        if ($ret) {
+            $lines = explode(PHP_EOL, $ret);
+
+            if (!empty($lines)) {
+                foreach ($lines as $line) {
+                    if (!empty($line)) {
+                        $values = array_map('trim', explode('|', $line));
+
+                        if ($values[3] === 'ok') {
+                            $description = $values[0];
+                            $id = $this->generateId($description);
+                            $value = $values[1];
+                            $uom = $values[2];
+                            $type = array_key_exists($uom, $this->unitsOfMeasure) ? $this->unitsOfMeasure[$uom] : null;
+
+                            if ($type) {
+                                $sensorData[$type][$id] = $description;
+                                $states[$id] = $value;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        return $ret !== false;
+    }
+
+    private function extractFromSdrCommand(array $cmd, string $interface, array &$sensorData, array &$states): bool
+    {
+        $ret = $this->runCommand(array_merge($cmd, ['-I', $interface, 'sdr', 'list', 'full']), true);
+
+        if ($ret) {
+            $lines = explode(PHP_EOL, $ret);
+
+            if (!empty($lines)) {
+                foreach ($lines as $line) {
+                    if (!empty($line)) {
+                        $values = array_map('trim', explode('|', $line));
+
+                        if ($values[2] === 'ok') {
+                            $description = $values[0];
+                            $id = $this->generateId($description);
+                            $value = $values[1];
+
+                            foreach($this->unitsOfMeasure as $uom => $type) {
+                                if (str_contains($value, $uom)) {
+                                    $value = trim(str_replace($uom, '', $value));
+                                    $sensorData[$type][$id] = $description;
+                                    $states[$id] = $value;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        return $ret !== false;
+    }
+
+    private function extractFromDcmiPowerReadingCommand(array $cmd, string $interface, array &$sensorData, array &$states): void
+    {
+        $ret = $this->runCommand(array_merge($cmd, ['-I', $interface, 'dcmi', 'power', 'reading']), true);
+
+        if ($ret) {
+            // extract power usage from servers that support this command
+            $results = explode(PHP_EOL, $ret);
+
+            if (!empty($results)) {
+                foreach ($results as $result) {
+                    $extract = false;
+                    $sensorType = 'power';
+
+                    if (!empty($result)) {
+                        if (str_contains($result, 'Watts')) {
+                            $values = array_map('trim', explode(':', $result));
+                            $description = $values[0];
+                            $value = $values[1];
+                            $value = trim(str_replace('Watts', '', $value));
+                            $extract = true;
+                        } else if (str_contains($result, 'Seconds')) {
+                            $description = 'Sampling period';
+                            $pattern = "/" . $description . ":\K.+?(?=Seconds)/";
+                            $success = preg_match($pattern, $result, $match);
+                            $sensorType = 'time';
+
+                            if ($success) {
+                                $extract = true;
+                                $value = trim($match[0]);
+                            }
+                        }
+
+                        if ($extract) {
+                            $id = $this->generateId($description);
+                            $sensorData[$sensorType][$id] = $description;
+                            $states[$id] = $value;
+                        }
+                    }
+                }
+            }
+        }
     }
 
     private function getSensorsByType(Request $request, string $type, string $unit): array
