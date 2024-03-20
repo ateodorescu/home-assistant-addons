@@ -22,7 +22,7 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 RUN apk -U update
 RUN apk -U upgrade
 RUN apk -U add --no-cache \
-    ipmitool
+    ipmitool=1.8.18-r10
 RUN apk -U add --no-cache \
     nginx=1.24.0-r7
 
