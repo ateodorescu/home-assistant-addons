@@ -1,3 +1,4 @@
 # https://developers.home-assistant.io/docs/add-ons/repository#repository-configuration
-name: Ateodorescu Home Assistant add-on repository
+name: Home Assistant add-on - IPMItool server
 url: 'https://github.com/ateodorescu/home-assistant-addons'
+maintainer: Adrian Teodorescu <ateodorescu@gmail.com>
