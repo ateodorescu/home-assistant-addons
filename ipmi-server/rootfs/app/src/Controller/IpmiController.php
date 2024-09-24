@@ -417,7 +417,11 @@ class IpmiController
                             foreach($this->unitsOfMeasure as $uom => $type) {
                                 if (str_contains($value, $uom)) {
                                     $value = trim(str_replace($uom, '', $value));
-                                    $sensorData[$type][$id] = $description;
+				    if (array_key_exists($id, $sensorData[$type])) {
+					$description .= ' 2';
+				        $id = $this->generateId($description);
+				    }
+				    $sensorData[$type][$id] = $description;
                                     $states[$id] = $value;
                                 }
                             }
