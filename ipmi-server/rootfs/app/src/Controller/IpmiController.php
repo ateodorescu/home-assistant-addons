@@ -397,6 +397,13 @@ class IpmiController
         return $ret !== false;
     }
 
+    private function preg_array_key_exists($pattern, $array): array
+    {
+        $keys = array_keys($array);
+        return preg_grep($pattern,$keys);
+    }
+
+
     private function extractFromSdrCommand(array $cmd, string $interface, array &$sensorData, array &$states): bool
     {
         $ret = $this->runCommand(array_merge($cmd, ['-I', $interface, 'sdr', 'list', 'full']), true);
@@ -417,6 +424,14 @@ class IpmiController
                             foreach($this->unitsOfMeasure as $uom => $type) {
                                 if (str_contains($value, $uom)) {
                                     $value = trim(str_replace($uom, '', $value));
+
+                                    $id_pattern = "/^".$id."/";
+                                    $id_count = count($this->preg_array_key_exists($id_pattern, $sensorData[$type]));
+                                    if ($id_count > 0) {
+                                        $description .= ' ' . $id_count+1;
+                                        $id = $this->generateId($description);
+                                    }
+
                                     $sensorData[$type][$id] = $description;
                                     $states[$id] = $value;
                                 }
