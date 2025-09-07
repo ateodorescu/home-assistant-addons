@@ -189,6 +189,7 @@ class IpmiController
 
         $user = $query->get('user', '');
         $pass = $query->get('password', '');
+        $role = $query->get('role', '');
         $extra = $query->get('extra', '');
 
         $cmd = ['ipmitool', '-H', $host, '-p', $query->get('port', self::DEFAULT_PORT)];
@@ -201,6 +202,11 @@ class IpmiController
         if (!empty($pass)) {
             $cmd[] = '-P';
             $cmd[] = $pass;
+        }
+
+        if (!empty($role)) {
+            $cmd[] = '-L';
+            $cmd[] = $role;
         }
 
         if (!empty($extra)) {
