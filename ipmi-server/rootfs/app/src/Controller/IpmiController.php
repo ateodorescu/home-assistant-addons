@@ -356,7 +356,6 @@ class IpmiController
 
         if ($cmd !== false) {
             try {
-//                $response['success'] = $this->extractFromSensorCommand($cmd, $interface, $sensorData, $states);
                 $response['success'] = $this->extractFromSdrCommand($cmd, $interface, $sensorData, $states);
                 $this->extractFromDcmiPowerReadingCommand($cmd, $interface, $sensorData, $states);
 
