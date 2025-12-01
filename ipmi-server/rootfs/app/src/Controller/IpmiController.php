@@ -189,6 +189,8 @@ class IpmiController
 
         $user = $query->get('user', '');
         $pass = $query->get('password', '');
+        $kg_key = $query->get('kg_key', '');
+        $privilege_level = $query->get('privilege_level', '');
         $extra = $query->get('extra', '');
 
         $cmd = ['ipmitool', '-H', $host, '-p', $query->get('port', self::DEFAULT_PORT)];
@@ -203,8 +205,27 @@ class IpmiController
             $cmd[] = $pass;
         }
 
+        // Add Kg key for encrypted IPMI sessions
+        if (!empty($kg_key)) {
+            $cmd[] = '-y';
+            $cmd[] = $kg_key;
+        }
+
+        // Add privilege level
+        if (!empty($privilege_level)) {
+            $cmd[] = '-L';
+            $cmd[] = $privilege_level;
+        }
+
+        // Parse extra params if provided
         if (!empty($extra)) {
-            $cmd[] = $extra;
+            // If extra contains multiple arguments, parse them properly
+            $extraArgs = str_getcsv($extra, ' ', '"', '');
+            foreach ($extraArgs as $arg) {
+                if (!empty($arg)) {
+                    $cmd[] = $arg;
+                }
+            }
         }
 
         return $cmd;
