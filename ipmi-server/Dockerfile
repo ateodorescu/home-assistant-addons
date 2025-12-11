@@ -51,6 +51,8 @@ RUN mkdir -p /app \
     && mkdir -p /app/var/cache/prod \
     && mkdir -p /var/tmp/nginx
 
+RUN chmod -R 777 /app/var/
+
 # Copy root filesystem
 COPY rootfs /
 
