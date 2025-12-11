@@ -34,13 +34,13 @@ RUN apk -U add --no-cache \
     php$PHPVERS-json \
     php$PHPVERS-ctype \
     php$PHPVERS-session \
+    php$PHPVERS-tokenizer \
     php$PHPVERS-opcache
 #    php$PHPVERS-mbstring \
 #    php$PHPVERS-curl \
 #    php$PHPVERS-dom \
 #    php$PHPVERS-xml \
 #    php$PHPVERS-simplexml \
-#    php$PHPVERS-tokenizer
 #    php$PHPVERS-gettext \
 #    php$PHPVERS-zip \
 #    php$PHPVERS-zlib \
