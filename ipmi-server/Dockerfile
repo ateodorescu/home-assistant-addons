@@ -26,25 +26,25 @@ RUN apk -U add --no-cache \
 RUN apk -U add --no-cache \
     nginx=1.28.0-r3
 
-ENV PHPVERS="83"
+ENV PHPVERS="82"
 RUN apk -U add --no-cache \
     php$PHPVERS \
-    php$PHPVERS-fpm \
-    php$PHPVERS-curl \
-    php$PHPVERS-dom \
-    php$PHPVERS-gettext \
-    php$PHPVERS-xml \
-    php$PHPVERS-simplexml \
-    php$PHPVERS-zip \
-    php$PHPVERS-zlib \
-    php$PHPVERS-gd \
     php$PHPVERS-openssl \
     php$PHPVERS-json \
-    php$PHPVERS-mbstring \
     php$PHPVERS-ctype \
     php$PHPVERS-opcache \
-    php$PHPVERS-session \
-    php$PHPVERS-tokenizer
+#    php$PHPVERS-mbstring \
+#    php$PHPVERS-fpm \
+#    php$PHPVERS-curl \
+#    php$PHPVERS-dom \
+#    php$PHPVERS-xml \
+#    php$PHPVERS-simplexml \
+#    php$PHPVERS-session \
+#    php$PHPVERS-tokenizer
+#    php$PHPVERS-gettext \
+#    php$PHPVERS-zip \
+#    php$PHPVERS-zlib \
+#    php$PHPVERS-gd \
 
 RUN mkdir -p /app \
     && mkdir /app/cache \
