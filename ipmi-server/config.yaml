@@ -1,5 +1,5 @@
 name: IPMItool server
-version: "1.2.13"
+version: "1.2.14"
 slug: ipmi-server
 description: IPMItool server
 url: "https://github.com/ateodorescu/home-assistant-addons"
