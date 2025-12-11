@@ -1,3 +1,10 @@
+### 1.2.16
+- update docker image to ghcr.io/hassio-addons/base:19.0.0
+- php 8.2
+
+## 1.2.9
+- add Kg encryption key and privilege level support to IpmiController
+- 
 ## 1.2.7
 - extract all sensors that are returned by `sdr list full` command because
 the `sensor` command does not work with all servers.
