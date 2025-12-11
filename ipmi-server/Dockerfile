@@ -7,7 +7,7 @@ ENV S6_CMD_WAIT_FOR_SERVICES=1 \
     S6_CMD_WAIT_FOR_SERVICES_MAXTIME=0 \
     S6_SERVICES_GRACETIME=0
 
-ENV LANG C.UTF-8
+ENV LANG=C.UTF-8
 
 ENV APP_DIR="/app"
 
@@ -26,7 +26,7 @@ RUN apk -U add --no-cache \
 RUN apk -U add --no-cache \
     nginx=1.28.0-r3
 
-ENV PHPVERS="81"
+ENV PHPVERS="83"
 RUN apk -U add --no-cache \
     php$PHPVERS \
     php$PHPVERS-fpm \
