@@ -48,6 +48,7 @@ RUN apk -U add --no-cache \
 
 RUN mkdir -p /app \
     && mkdir /app/cache \
+    && mkdir /app/var/cache/prod \
     && mkdir /var/tmp/nginx
 
 # Copy root filesystem
