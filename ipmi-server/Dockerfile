@@ -32,7 +32,7 @@ RUN apk -U add --no-cache \
     php$PHPVERS-openssl \
     php$PHPVERS-json \
     php$PHPVERS-ctype \
-    php$PHPVERS-opcache \
+    php$PHPVERS-opcache
 #    php$PHPVERS-mbstring \
 #    php$PHPVERS-fpm \
 #    php$PHPVERS-curl \
