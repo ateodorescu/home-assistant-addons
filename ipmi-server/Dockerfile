@@ -29,12 +29,12 @@ RUN apk -U add --no-cache \
 ENV PHPVERS="82"
 RUN apk -U add --no-cache \
     php$PHPVERS \
+    php$PHPVERS-fpm \
     php$PHPVERS-openssl \
     php$PHPVERS-json \
     php$PHPVERS-ctype \
     php$PHPVERS-opcache
 #    php$PHPVERS-mbstring \
-#    php$PHPVERS-fpm \
 #    php$PHPVERS-curl \
 #    php$PHPVERS-dom \
 #    php$PHPVERS-xml \
