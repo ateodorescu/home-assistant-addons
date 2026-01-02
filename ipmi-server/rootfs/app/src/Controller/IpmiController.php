@@ -138,7 +138,7 @@ class IpmiController
 
     private function runCommand($command, $ignoreErrors = false): bool|string
     {
-        $errorIntro = "Error occurred when running \"" . implode(" ", $command) . "\".\n" ;
+        $errorIntro = "Error occurred when running \"" . implode(" ", array_map($this->anonymizePassword(...), $command)) . "\".\n" ;
 
         try {
             $proc = new Process($command);
