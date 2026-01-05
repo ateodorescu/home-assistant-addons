@@ -27,3 +27,5 @@ ports:
 
 ports_description:
   80/tcp: "Not required for Ingress"
+
+image: "ghcr.io/ateodorescu/{arch}-ha-addon-impi-server"
