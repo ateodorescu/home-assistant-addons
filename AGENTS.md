@@ -123,16 +123,30 @@ There is no test suite checked in yet (`App\Tests\` is reserved in Composer). If
 
 ## CI / release
 
-- CI: `.github/workflows/ci.yaml` → reusable `hassio-addons` addon CI (includes yamllint via `.yamllint`; see **YAML / yamllint** above)
+- CI: `.github/workflows/ci.yaml` → reusable `hassio-addons` addon CI (includes yamllint via `.yamllint`; see **YAML / yamllint / Prettier** above)
 - Deploy add-on: `.github/workflows/deploy.yaml` on release / successful CI on `main`
 - Standalone image: `.github/workflows/docker-standalone.yaml` on `main` and `v*` tags
 
-Release process is documented in `RELEASING.md`:
+Full workflow: `RELEASING.md`. Agents must follow the **version** rules below.
 
-1. Develop with `version: "dev"` in `ipmi-server/config.yaml`
-2. For stable: set semver in `config.yaml`, push, publish GitHub release tag `vX.Y.Z`
-3. Reset `config.yaml` back to `"dev"` after release
-4. Update `ipmi-server/CHANGELOG.md` when releasing
+### Add-on `version` in `ipmi-server/config.yaml`
+
+This field is **not** rewritten by the Docker/CI build. It is the Supervisor add-on version **and** the image tag source (`:dev`, `:X.Y.Z`, `:latest`).
+
+| When                                              | `version` value                            | Why                                                                    |
+| ------------------------------------------------- | ------------------------------------------ | ---------------------------------------------------------------------- |
+| Normal development on `main`                      | `"dev"`                                    | Edge channel only; addon linter **requires** `"dev"` on non-release CI |
+| Preparing / publishing a release                  | semver, e.g. `"2.5.1"` (beta: `"2.5.1b1"`) | Users get that version; deploy tags `:2.5.1` and `:latest`             |
+| Immediately after the GitHub release is published | back to `"dev"`                            | Keeps `main` green and avoids notifying stable users on every push     |
+
+**Release checklist (agents):**
+
+1. Update `ipmi-server/CHANGELOG.md` for the release.
+2. Set `version: "X.Y.Z"` in `ipmi-server/config.yaml`, commit, push to `main`.
+3. Publish a GitHub release with tag `vX.Y.Z` (must match config; leave pre-release unchecked for stable).
+4. After the release exists, set `version: "dev"` again, commit, push to `main`.
+
+Do **not** leave a semver on `main` after a release — CI fails with `Add-on version identifier must be 'dev'`. Do **not** invent a different versioning scheme; stick to this edge/`dev` ↔ release/semver cycle.
 
 ## Security & secrets
 
