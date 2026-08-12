@@ -1,3 +1,7 @@
+## 2.5.2
+
+- Replace Deploy workflow with a local build-only pipeline (no `repository-dispatch` / `DISPATCH_TOKEN`)
+
 ## 2.5.1
 
 - Build `ipmitool` from source with OpenSSL/`lanplus` enabled (fixes missing RMCP+ interface)
