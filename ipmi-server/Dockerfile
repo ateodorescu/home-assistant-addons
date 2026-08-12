@@ -1,5 +1,5 @@
 # 1. ARGs used in FROM must be at the very top
-ARG BUILD_FROM=ghcr.io/hassio-addons/base:19.0.0
+ARG BUILD_FROM=ghcr.io/hassio-addons/base:21.0.0
 
 # 2. Define the composer stage
 FROM composer:2.8.5 AS composer_stage
@@ -13,29 +13,69 @@ ENV S6_CMD_WAIT_FOR_SERVICES=1 \
     S6_CMD_WAIT_FOR_SERVICES_MAXTIME=0 \
     S6_SERVICES_GRACETIME=0 \
     LANG=C.UTF-8 \
-    APP_DIR="/app"
+    APP_DIR="/app" \
+    OPENSSL_CONF="/etc/ssl/ipmitool-openssl.cnf"
 
 # Set shell
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 # Setup base and install dependencies
+# Build ipmitool from source so we control OpenSSL/lanplus linking.
+# Do NOT use --enable-internal-md5: that makes configure skip libcrypto and
+# disables the lanplus (IPMI v2 / RMCP+) interface entirely.
 # hadolint ignore=DL3003,DL3018
 RUN apk update && \
     apk add --no-cache \
-        ipmitool \
-        nginx=1.28.2-r0 \
-        php82 \
-        php82-fpm \
-        php82-openssl \
-        php82-json \
-        php82-ctype \
-        php82-session \
-        php82-tokenizer \
-        php82-opcache \
-        php82-iconv \
-        php82-xml && \
-    mkdir -p /app/cache /app/var/cache/prod /var/tmp/nginx && \
-    chmod -R 777 /app/var/
+        nginx=1.30.4-r1 \
+        php84=8.4.24-r0 \
+        php84-fpm=8.4.24-r0 \
+        php84-openssl=8.4.24-r0 \
+        php84-ctype=8.4.24-r0 \
+        php84-session=8.4.24-r0 \
+        php84-tokenizer=8.4.24-r0 \
+        php84-opcache=8.4.24-r0 \
+        php84-iconv=8.4.24-r0 \
+        php84-xml=8.4.24-r0 \
+        openssl \
+        readline \
+        ncurses \
+        libgcc && \
+    apk add --no-cache --virtual .ipmitool-build \
+        build-base \
+        automake \
+        autoconf \
+        libtool \
+        openssl-dev \
+        readline-dev \
+        ncurses-dev \
+        curl && \
+    curl -fsSL -o /tmp/ipmitool.tar.gz \
+        "https://github.com/ipmitool/ipmitool/archive/refs/tags/IPMITOOL_1_8_19.tar.gz" && \
+    mkdir -p /tmp/ipmitool && \
+    tar -xzf /tmp/ipmitool.tar.gz -C /tmp/ipmitool --strip-components=1 && \
+    cd /tmp/ipmitool && \
+    curl -fsSL -o /tmp/iana.patch \
+        "https://github.com/ipmitool/ipmitool/commit/1edb0e27e44196d1ebe449aba0b9be22d376bcb6.patch" && \
+    patch -p1 < /tmp/iana.patch && \
+    ./bootstrap && \
+    ./configure \
+        --prefix=/usr \
+        --bindir=/usr/sbin \
+        --enable-intf-lan \
+        --enable-intf-lanplus \
+        --enable-intf-open \
+        --disable-intf-usb \
+        --disable-internal-md5 && \
+    make -j"$(nproc)" && \
+    make install && \
+    cd / && \
+    rm -rf /tmp/ipmitool /tmp/ipmitool.tar.gz /tmp/iana.patch && \
+    apk del .ipmitool-build && \
+    mkdir -p /app/cache /app/var/cache/prod /app/var/log /var/tmp/nginx && \
+    chmod -R 777 /app/var/ && \
+    ipmitool -V && \
+    ipmitool -h 2>&1 | grep -q 'lanplus' && \
+    echo "ipmitool lanplus interface OK"
 
 # Copy root filesystem
 COPY rootfs /
@@ -46,12 +86,13 @@ COPY --from=composer_stage /usr/bin/composer /usr/bin/composer
 # Install app dependencies and clean up
 # hadolint ignore=DL3018
 RUN apk add --no-cache \
-        php82-phar \
-        php82-mbstring && \
-    php82 /usr/bin/composer --working-dir /app install && \
+        php84-phar=8.4.24-r0 \
+        php84-mbstring=8.4.24-r0 && \
+    php84 /usr/bin/composer --working-dir /app install && \
+    rm -rf /app/var/cache/* && \
     apk del \
-        php82-phar \
-        php82-mbstring && \
+        php84-phar \
+        php84-mbstring && \
     rm /usr/bin/composer
 
 # Consolidated permissions

@@ -1,6 +1,6 @@
 ---
 name: "IPMItool server"
-version: "2.4.0"
+version: "2.5.1"
 slug: "ipmi-server"
 description: "IPMItool server"
 url: "https://github.com/ateodorescu/home-assistant-addons"
@@ -11,8 +11,10 @@ arch:
 panel_icon: "mdi:server"
 init: false
 hassio_api: true
+host_network: true
 ingress: true
 ingress_stream: true
+ingress_entry: ui
 
 options:
   log_level: "info"
@@ -24,6 +26,8 @@ ports:
   80/tcp: 9595
 
 ports_description:
-  80/tcp: "Not required for Ingress"
+  80/tcp: "Web UI / API (also available via Ingress)"
 
+# For published releases, set this so Supervisor pulls the prebuilt image.
+# For local Dockerfile builds/testing, comment it out.
 image: "ghcr.io/ateodorescu/ipmi-server/{arch}"

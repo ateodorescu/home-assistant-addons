@@ -7,5 +7,17 @@
 
 bashio::log.info "Starting PHP-FPM..."
 
+# Persist saved BMC profiles in the add-on data directory.
+mkdir -p /data
+if [[ ! -f /data/ipmi-servers.json ]]; then
+    printf '%s\n' '{"servers":[]}' > /data/ipmi-servers.json
+fi
+chown nginx:nginx /data/ipmi-servers.json
+chmod 600 /data/ipmi-servers.json
+
+# Drop stale compiled container (e.g. copied from a previous build) so new
+# controller constructor deps are picked up after code changes.
+rm -rf /app/var/cache/*
+
 #/usr/sbin/php-fpm* -F
-exec php-fpm82 --nodaemonize
+exec php-fpm84 --nodaemonize

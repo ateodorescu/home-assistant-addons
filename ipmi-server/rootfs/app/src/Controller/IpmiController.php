@@ -28,12 +28,16 @@ class IpmiController
     ];
     private array $debug = [];
     private string $password = '';
-    const COMMAND_TIMEOUT = 50;
+    private string $kgKey = '';
+    // Hard ceiling per ipmitool invoke. Keep below nginx/php-fpm (120s).
+    const COMMAND_TIMEOUT = 45;
     const DEFAULT_PORT = 623;
+    public const PASSWORD_HEADER = 'X-Ipmi-Password';
+    public const KG_KEY_HEADER = 'X-Ipmi-Kg-Key';
 
     public function index(Request $request): JsonResponse
     {
-        $this->password = $request->query->get('password', '');
+        $this->hydrateSecrets($request);
         $info = $this->getDeviceInfo($request);
 
         if ($info['success']) {
@@ -47,7 +51,7 @@ class IpmiController
         $info['debug'] = implode("\n", $this->debug);
 
         if (array_key_exists('message', $info)) {
-            $info['message'] = $this->anonymizePassword($info['message']);
+            $info['message'] = $this->anonymizeSecrets($info['message']);
         }
 
         return new JsonResponse($info);
@@ -55,7 +59,10 @@ class IpmiController
 
     public function command(Request $request): JsonResponse
     {
-        $cmd = str_getcsv($request->get('params', ''), ' ', '"', '');
+        $this->hydrateSecrets($request);
+        $cmd = str_getcsv($request->query->get('params', ''), ' ', '"', '');
+        $this->captureSecretsFromCommandArgs($cmd);
+        $cmd = $this->mergeSecretArgs($cmd);
         array_unshift($cmd, 'ipmitool');
         $ret = $this->runCommand($cmd);
         $done = ($ret !== false);
@@ -68,7 +75,15 @@ class IpmiController
 
     public function sensors(Request $request): JsonResponse
     {
-        return new JsonResponse($this->getSensors($request));
+        $this->hydrateSecrets($request);
+        $response = $this->getSensors($request);
+        $response['debug'] = implode("\n", $this->debug);
+
+        if (array_key_exists('message', $response)) {
+            $response['message'] = $this->anonymizeSecrets($response['message']);
+        }
+
+        return new JsonResponse($response);
     }
 
     public function power_on(Request $request): JsonResponse
@@ -103,13 +118,119 @@ class IpmiController
         return strtolower(str_replace(' ', '_', $id));
     }
 
-    private function anonymizePassword(string $message): string
+    private function anonymizeSecrets(string $message): string
     {
-        return empty($this->password) ? $message : str_replace($this->password, '####', $message);
+        foreach ([$this->password, $this->kgKey] as $secret) {
+            if ($secret !== '') {
+                $message = str_replace($secret, '####', $message);
+            }
+        }
+
+        return $message;
+    }
+
+    private function hydrateSecrets(Request $request): void
+    {
+        $this->password = $this->getSecret($request, 'password', self::PASSWORD_HEADER);
+        $this->kgKey = $this->getSecret($request, 'kg_key', self::KG_KEY_HEADER);
+    }
+
+    private function getSecret(Request $request, string $field, string $header): string
+    {
+        $fromHeader = $request->headers->get($header);
+        if (is_string($fromHeader) && $fromHeader !== '') {
+            return $fromHeader;
+        }
+
+        $fromBody = $request->request->get($field);
+        if (is_string($fromBody) && $fromBody !== '') {
+            return $fromBody;
+        }
+
+        return trim((string) $request->query->get($field, ''));
+    }
+
+    /**
+     * @param list<string> $cmd
+     *
+     * @return list<string>
+     */
+    private function mergeSecretArgs(array $cmd): array
+    {
+        $hasPassword = false;
+        $hasKgKey = false;
+
+        foreach ($cmd as $part) {
+            if ($part === '-P') {
+                $hasPassword = true;
+            } elseif ($part === '-y') {
+                $hasKgKey = true;
+            }
+        }
+
+        // Insert secrets with connection options, BEFORE the IPMI subcommand
+        // (e.g. "bmc info"). Options after the subcommand are ignored by ipmitool.
+        $insertAt = $this->findIpmiSubcommandIndex($cmd);
+
+        if (!$hasKgKey && $this->kgKey !== '') {
+            array_splice($cmd, $insertAt, 0, ['-y', $this->kgKey]);
+        }
+        if (!$hasPassword && $this->password !== '') {
+            array_splice($cmd, $insertAt, 0, ['-P', $this->password]);
+        }
+
+        return $cmd;
+    }
+
+    /**
+     * Index of the first IPMI subcommand token (non-option), or end of array.
+     *
+     * @param list<string> $cmd
+     */
+    private function findIpmiSubcommandIndex(array $cmd): int
+    {
+        $optionsWithValue = [
+            '-A', '-b', '-B', '-C', '-d', '-D', '-e', '-f', '-H', '-I', '-k', '-K',
+            '-l', '-L', '-m', '-N', '-o', '-O', '-p', '-P', '-R', '-S', '-t', '-T',
+            '-U', '-y', '-z',
+        ];
+
+        $count = \count($cmd);
+        for ($i = 0; $i < $count; $i++) {
+            $part = $cmd[$i];
+            if ($part === '' || $part[0] !== '-') {
+                return $i;
+            }
+            if (\in_array($part, $optionsWithValue, true)) {
+                $i++; // skip option value
+            }
+        }
+
+        return $count;
+    }
+
+    /**
+     * @param list<string> $cmd
+     */
+    private function captureSecretsFromCommandArgs(array $cmd): void
+    {
+        foreach ($cmd as $index => $part) {
+            $next = $cmd[$index + 1] ?? null;
+            if (!is_string($next) || $next === '') {
+                continue;
+            }
+
+            if ($part === '-P' && $this->password === '') {
+                $this->password = $next;
+            } elseif ($part === '-y' && $this->kgKey === '') {
+                $this->kgKey = $next;
+            }
+        }
     }
 
     private function runChassisCommand(Request $request, string $type):JsonResponse
     {
+        $this->hydrateSecrets($request);
         $done = false;
         $cmd = $this->getCommand($request);
         $interface = $request->query->get('interface', '');
@@ -138,18 +259,52 @@ class IpmiController
 
     private function runCommand($command, $ignoreErrors = false): bool|string
     {
-        $errorIntro = "Error occurred when running \"" . implode(" ", array_map($this->anonymizePassword(...), $command)) . "\".\n" ;
+        $result = $this->executeIpmiCommand($command, $ignoreErrors);
+        if ($result !== false) {
+            return $result;
+        }
+
+        // Super Micro / OpenSSL 3: try common RMCP+ cipher suites when default fails.
+        // Suite 17 is modern but often unsupported; 3/8/12 are common on older BMCs.
+        if (\in_array('lanplus', $command, true) && !\in_array('-C', $command, true)) {
+            foreach ([3, 8, 12, 17, 15, 16, 6, 7, 11, 1, 2] as $cipher) {
+                $retry = $command;
+                $lanplusIdx = array_search('lanplus', $retry, true);
+                if ($lanplusIdx === false) {
+                    break;
+                }
+                array_splice($retry, $lanplusIdx + 1, 0, ['-C', (string) $cipher]);
+                $result = $this->executeIpmiCommand($retry, true);
+                if ($result !== false) {
+                    return $result;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @param list<string> $command
+     */
+    private function executeIpmiCommand(array $command, bool $ignoreErrors = false): bool|string
+    {
+        $errorIntro = "Error occurred when running \"" . implode(" ", array_map($this->anonymizeSecrets(...), $command)) . "\".\n" ;
 
         try {
             $proc = new Process($command);
             $proc->setTimeout(self::COMMAND_TIMEOUT);
-            $proc->run();
+            $opensslConf = '/etc/ssl/ipmitool-openssl.cnf';
+            $env = [];
+            if (is_readable($opensslConf)) {
+                $env['OPENSSL_CONF'] = $opensslConf;
+            }
+            $proc->run(null, $env);
             $output = $proc->getOutput();
-            $exitCode = $proc->stop();
+            $exitCode = $proc->getExitCode();
 
             if ($exitCode) {
-                // let's log this error
-                $message = $this->anonymizePassword($errorIntro .$proc->getErrorOutput());
+                $message = $this->anonymizeSecrets($errorIntro.$proc->getErrorOutput());
                 $this->debug[] = $message;
 
                 if (!$ignoreErrors) {
@@ -161,7 +316,7 @@ class IpmiController
         }
         catch (\Exception $exception) {
             // let's log this error
-            $message = $this->anonymizePassword($errorIntro . $exception->getMessage());
+            $message = $this->anonymizeSecrets($errorIntro . $exception->getMessage());
             $this->debug[] = $message;
 
             if (!$ignoreErrors) {
@@ -176,6 +331,7 @@ class IpmiController
 
     private function getCommand(Request $request): array|bool
     {
+        $this->hydrateSecrets($request);
         $query = $request->query;
         $host = $query->get('host');
 
@@ -188,8 +344,8 @@ class IpmiController
         }
 
         $user = $query->get('user', '');
-        $pass = $query->get('password', '');
-        $kg_key = $query->get('kg_key', '');
+        $pass = $this->password;
+        $kg_key = $this->kgKey;
         $privilege_level = $query->get('privilege_level', '');
         $extra = $query->get('extra', '');
 
@@ -373,8 +529,11 @@ class IpmiController
             try {
 //                $response['success'] = $this->extractFromSensorCommand($cmd, $interface, $sensorData, $states);
                 $response['success'] = $this->extractFromSdrCommand($cmd, $interface, $sensorData, $states);
-                $this->extractFromDcmiPowerReadingCommand($cmd, $interface, $sensorData, $states);
-
+                // DCMI is optional and often unsupported; skip it when SDR already failed
+                // so auto-detect does not burn another full command timeout per interface.
+                if ($response['success']) {
+                    $this->extractFromDcmiPowerReadingCommand($cmd, $interface, $sensorData, $states);
+                }
             } catch (\Exception $exception) {
                 $response['message'] = $exception->getMessage();
             }

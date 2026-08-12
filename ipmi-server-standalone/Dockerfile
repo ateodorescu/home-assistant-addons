@@ -2,20 +2,53 @@
 FROM composer:latest AS composer_stage
 
 # 2. Start your main PHP image
-FROM php:8.2-fpm-alpine
+FROM php:8.4-fpm-alpine
 
-# 3. Install system dependencies
+# 3. Install system dependencies + build ipmitool from source (match add-on).
+# hadolint ignore=DL3003,DL3018
 RUN apk add --no-cache \
     nginx \
     supervisor \
-    ipmitool \
     bash \
     libzip-dev \
-    # Required for composer to work on Alpine
     libintl \
     icu-dev \
     git \
-    oniguruma-dev
+    oniguruma-dev \
+    openssl \
+    readline \
+    ncurses \
+    libgcc && \
+    apk add --no-cache --virtual .ipmitool-build \
+        build-base automake autoconf libtool \
+        openssl-dev readline-dev ncurses-dev curl && \
+    curl -fsSL -o /tmp/ipmitool.tar.gz \
+        "https://github.com/ipmitool/ipmitool/archive/refs/tags/IPMITOOL_1_8_19.tar.gz" && \
+    mkdir -p /tmp/ipmitool && \
+    tar -xzf /tmp/ipmitool.tar.gz -C /tmp/ipmitool --strip-components=1 && \
+    cd /tmp/ipmitool && \
+    curl -fsSL -o /tmp/iana.patch \
+        "https://github.com/ipmitool/ipmitool/commit/1edb0e27e44196d1ebe449aba0b9be22d376bcb6.patch" && \
+    patch -p1 < /tmp/iana.patch && \
+    ./bootstrap && \
+    ./configure \
+        --prefix=/usr \
+        --bindir=/usr/sbin \
+        --enable-intf-lan \
+        --enable-intf-lanplus \
+        --enable-intf-open \
+        --disable-intf-usb \
+        --disable-internal-md5 && \
+    make -j"$(nproc)" && \
+    make install && \
+    cd / && \
+    rm -rf /tmp/ipmitool /tmp/ipmitool.tar.gz /tmp/iana.patch && \
+    apk del .ipmitool-build && \
+    ipmitool -V && \
+    ipmitool -h 2>&1 | grep -q 'lanplus'
+
+COPY /ipmi-server/rootfs/etc/ssl/ipmitool-openssl.cnf /etc/ssl/ipmitool-openssl.cnf
+ENV OPENSSL_CONF=/etc/ssl/ipmitool-openssl.cnf
 
 # 4. Install PHP extensions
 RUN docker-php-ext-install bcmath pcntl zip mbstring intl
@@ -37,7 +70,8 @@ RUN php /usr/bin/composer install \
     --no-dev \
     --optimize-autoloader \
     --no-interaction \
-    --working-dir /var/www/html
+    --working-dir /var/www/html && \
+    rm -rf /var/www/html/var/cache/*
 
 # 9. Final Permissions Fix
 RUN chown -R www-data:www-data /var/www/html
