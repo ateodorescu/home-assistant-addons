@@ -15,5 +15,10 @@ on:
 jobs:
   workflows:
     uses: hassio-addons/workflows/.github/workflows/addon-deploy.yaml@main
+    with:
+      # Single-repo layout: this repo is the HA add-on repository itself.
+      repository: home-assistant-addons
+      repository_edge: home-assistant-addons
+      repository_beta: home-assistant-addons
     secrets:
       DISPATCH_TOKEN: ${{ secrets.DISPATCH_TOKEN }}
