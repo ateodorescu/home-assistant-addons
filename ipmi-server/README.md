@@ -12,7 +12,7 @@ It lets you monitor sensors and control power on supported machines, including w
 
 - JSON API for device info, sensors, power actions, and custom `ipmitool` commands
 - Web UI via Home Assistant Ingress (**Open Web UI**) for sensors, power commands, and custom commands
-- Optional direct access on port `9595` (mapped from container port `80`)
+- Optional direct access on port `9595` (host networking; also available via Ingress)
 
 ## Installation
 

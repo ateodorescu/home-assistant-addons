@@ -40,7 +40,7 @@ Passwords are only sent to this add-on. They are anonymized as `####` in logs an
 
 ## HTTP API
 
-The service listens on container port `80` (host port **9595** by default) and via Ingress.
+The service listens on port **9595** (and via Ingress). Because the add-on uses `host_network`, that is the real host port — there is no separate `80→9595` remap.
 
 | Path                                                                    | Purpose                  |
 | ----------------------------------------------------------------------- | ------------------------ |
@@ -70,6 +70,7 @@ URL-encode spaces and special characters in `params`. Responses are JSON (`succe
 
 ## Troubleshooting
 
+- **Integration falls back to RMCP / connection refused on `:9595`**: confirm the add-on is **started**. From Core, use `http://localhost` or the HA host LAN IP with port **9595** (not `172.30.0.x` Core container IPs, and not port 80). Prefer **Open Web UI** (Ingress) for browser access.
 - **504 Gateway Timeout** under Ingress: the BMC call took too long (wrong interface, unreachable host, or auto-detect trying many types). Prefer a fixed `lanplus` interface.
 - **Unable to establish IPMI v2 / RMCP+ session**: check username/password, privilege, cipher suite (`-C 3` / `-C 17`), and that the BMC allows the Home Assistant host IP.
 - **Works from a laptop but not the add-on**: almost always BMC IP access control or firewall — allow the HA host address.

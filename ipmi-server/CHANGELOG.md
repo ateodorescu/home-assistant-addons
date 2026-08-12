@@ -1,3 +1,8 @@
+## 2.5.3
+
+- Listen on port **9595** under `host_network` (port maps like `80→9595` are ignored with host networking, which broke `localhost:9595` / integration defaults)
+- Point Ingress proxy at `127.0.0.1:9595`
+
 ## 2.5.2
 
 - Replace Deploy workflow with a local build-only pipeline (no `repository-dispatch` / `DISPATCH_TOKEN`)
