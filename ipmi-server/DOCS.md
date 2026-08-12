@@ -29,11 +29,11 @@ From the UI you can:
 
 ### Connection tips
 
-| Setting | Recommendation |
-| --- | --- |
-| Interface | Prefer **`lanplus`** (IPMI 2.0). Auto detect tries several interfaces and can be slower. |
-| Privilege | Use **ADMINISTRATOR** if your BMC user requires it. |
-| Cipher suite | Some BMCs need an explicit suite (common on Super Micro: try custom args `-C 3`). |
+| Setting        | Recommendation                                                                                  |
+| -------------- | ----------------------------------------------------------------------------------------------- |
+| Interface      | Prefer **`lanplus`** (IPMI 2.0). Auto detect tries several interfaces and can be slower.        |
+| Privilege      | Use **ADMINISTRATOR** if your BMC user requires it.                                             |
+| Cipher suite   | Some BMCs need an explicit suite (common on Super Micro: try custom args `-C 3`).               |
 | Firewall / ACL | Allow the **Home Assistant host IP** on the BMC’s IP access list. Your laptop IP is not enough. |
 
 Passwords are only sent to this add-on. They are anonymized as `####` in logs and error/debug output.
@@ -42,13 +42,13 @@ Passwords are only sent to this add-on. They are anonymized as `####` in logs an
 
 The service listens on container port `80` (host port **9595** by default) and via Ingress.
 
-| Path | Purpose |
-| --- | --- |
-| `/ui` | Web UI |
-| `/` | Device info + sensors |
-| `/sensors` | Sensors only |
-| `/command?params=…` | Raw `ipmitool` arguments |
-| `/power_on` `/power_off` `/power_cycle` `/power_reset` `/soft_shutdown` | Chassis power helpers |
+| Path                                                                    | Purpose                  |
+| ----------------------------------------------------------------------- | ------------------------ |
+| `/ui`                                                                   | Web UI                   |
+| `/`                                                                     | Device info + sensors    |
+| `/sensors`                                                              | Sensors only             |
+| `/command?params=…`                                                     | Raw `ipmitool` arguments |
+| `/power_on` `/power_off` `/power_cycle` `/power_reset` `/soft_shutdown` | Chassis power helpers    |
 
 Common query parameters: `host`, `port` (default `623`), `user`, `password`, `interface`, `kg_key`, `privilege_level`, `extra`.
 

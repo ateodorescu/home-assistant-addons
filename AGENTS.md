@@ -8,10 +8,10 @@ Home Assistant add-on repository that ships an **IPMItool HTTP server**. The ser
 
 Two deployables share the same Symfony app:
 
-| Path | Purpose |
-| --- | --- |
-| `ipmi-server/` | Home Assistant add-on (hassio-addons base 21, s6, nginx, PHP-FPM) |
-| `ipmi-server-standalone/` | Standalone Docker image (php-fpm-alpine + supervisor + nginx) |
+| Path                      | Purpose                                                           |
+| ------------------------- | ----------------------------------------------------------------- |
+| `ipmi-server/`            | Home Assistant add-on (hassio-addons base 21, s6, nginx, PHP-FPM) |
+| `ipmi-server-standalone/` | Standalone Docker image (php-fpm-alpine + supervisor + nginx)     |
 
 Published images:
 
@@ -55,13 +55,13 @@ PSR-4: `App\` → `ipmi-server/rootfs/app/src/`
 
 Default host port mapping (add-on): container `80` → host `9595`. Ingress is also enabled.
 
-| Path | Handler | Role |
-| --- | --- | --- |
-| `/ui` | `WebUiController` | Ingress web UI (form → fetch/display sensors) |
-| `/` | `index` | Device info (bmc/fru/power) + sensors |
-| `/sensors` | `sensors` | Sensors only (SDR + DCMI power reading) |
-| `/command` | `command` | Raw `ipmitool` via `params` query string |
-| `/power_on` `/power_off` `/power_cycle` `/power_reset` `/soft_shutdown` | chassis power helpers | |
+| Path                                                                    | Handler               | Role                                          |
+| ----------------------------------------------------------------------- | --------------------- | --------------------------------------------- |
+| `/ui`                                                                   | `WebUiController`     | Ingress web UI (form → fetch/display sensors) |
+| `/`                                                                     | `index`               | Device info (bmc/fru/power) + sensors         |
+| `/sensors`                                                              | `sensors`             | Sensors only (SDR + DCMI power reading)       |
+| `/command`                                                              | `command`             | Raw `ipmitool` via `params` query string      |
+| `/power_on` `/power_off` `/power_cycle` `/power_reset` `/soft_shutdown` | chassis power helpers |                                               |
 
 Ingress Open Web UI entry: `ingress_entry: ui` in `ipmi-server/config.yaml` (opens `/ui`).
 
@@ -83,6 +83,33 @@ Responses are JSON. Prefer keeping `success`, `message`/`output`, `device`, `sen
 - Pin nginx/apk package versions carefully in the add-on `Dockerfile` (HA VM installs have broken on unpinned nginx before).
 - Standalone image must stay in sync with app changes under `ipmi-server/rootfs/app` (it copies that tree).
 
+## YAML / yamllint / Prettier
+
+CI runs both **yamllint** (`.yamllint`) and **Prettier** (`creyD/prettier_action` via hassio-addons CI). **All** YAML is checked, including Symfony files under `ipmi-server/rootfs/app/config/` (not only add-on `config.yaml` / workflows). Markdown and `composer.json` are also Prettier-checked.
+
+When creating or editing YAML, follow these rules (errors fail CI):
+
+- Start every document with `---` (`document-start: present`).
+- Do **not** add a trailing `...` (`document-end: present: false`).
+- Indent with **2 spaces**; sequence items under a key are indented (`indent-sequences: true`).
+- Comments: space after `#` (`# comment`), at least 2 spaces from content when inline, and indent comments like the content they annotate (`comments` / `comments-indentation`).
+- No trailing spaces; Unix newlines; file ends with a newline; at most one consecutive blank line.
+- Colons: no space before, one space after. Hyphen lists: one space after `-`.
+- Braces `{ }` allow 0–1 spaces inside; brackets `[ ]` allow **0** spaces inside.
+- `truthy` is an error: bare `yes`/`no`/`on`/`off`/`true`/`false` as unquoted values are flagged in some contexts — quote them or use `# yamllint disable-line rule:truthy` (as in GitHub workflow `on:` keys).
+- Line length is a **warning** at 120 chars (non-breakable words/inline mappings allowed).
+
+Prettier reads `ipmi-server/rootfs/app/.editorconfig`. Keep `*.{yaml,yml}` at `indent_size = 2` there so Prettier and yamllint agree (PHP/JSON may stay at 4).
+
+Validate locally before pushing:
+
+```bash
+yamllint -c .yamllint .
+npx prettier@3.9.6 --check "**/*.{js,md,yaml,yml,json}"
+# fix: npx prettier@3.9.6 --write <paths>
+# .prettierignore excludes app vendor/ and var/
+```
+
 ## Local Symfony work
 
 App root: `ipmi-server/rootfs/app`
@@ -96,7 +123,7 @@ There is no test suite checked in yet (`App\Tests\` is reserved in Composer). If
 
 ## CI / release
 
-- CI: `.github/workflows/ci.yaml` → reusable `hassio-addons` addon CI
+- CI: `.github/workflows/ci.yaml` → reusable `hassio-addons` addon CI (includes yamllint via `.yamllint`; see **YAML / yamllint** above)
 - Deploy add-on: `.github/workflows/deploy.yaml` on release / successful CI on `main`
 - Standalone image: `.github/workflows/docker-standalone.yaml` on `main` and `v*` tags
 

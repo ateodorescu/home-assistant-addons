@@ -17,13 +17,13 @@ services:
   # makes classes in src/ available to be used as services
   # this creates a service per class whose id is the fully-qualified class name
   App\:
-    resource: '../src/'
+    resource: "../src/"
     exclude:
-      - '../src/DependencyInjection/'
-      - '../src/Entity/'
-      - '../src/Kernel.php'
-      - '../src/Controller/'
+      - "../src/DependencyInjection/"
+      - "../src/Entity/"
+      - "../src/Kernel.php"
+      - "../src/Controller/"
 
   App\Controller\:
-    resource: '../src/Controller/'
-    tags: ['controller.service_arguments']
+    resource: "../src/Controller/"
+    tags: ["controller.service_arguments"]
