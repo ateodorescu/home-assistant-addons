@@ -1,3 +1,16 @@
+## 2.6.0
+
+- Resilient default poll (`GET /`): BMC info and chassis power remain required; FRU, SDR, and DCMI are best-effort and no longer fail the whole response when optional steps fail
+- Add optional `sensor_types` query param on `GET /` and `GET /sensors` (omit for full discovery, empty for power/device only, comma-separated list to filter categories)
+- Add API metadata on JSON responses (`api_version`, `addon_version`, `capabilities`) and `GET /meta` without BMC credentials
+- Skip FRU lookup when `sensor_types` is empty (power-only polls for limited BMCs such as NanoKVM)
+
+## 2.5.4
+
+- Include SDR/`sensor` readings that are not status `ok` (e.g. **0 RPM | cr** failed fans) when the value is still present; skip only empty / `no reading` rows ([#52](https://github.com/ateodorescu/home-assistant-ipmi/issues/52))
+- Expose per-sensor IPMI status codes in the API as `statuses` (e.g. `ok`, `cr`, `nc`)
+- Fix duplicate sensor suffix when disambiguating identical SDR names
+
 ## 2.5.3
 
 - Listen on port **9595** under `host_network` (port maps like `80→9595` are ignored with host networking, which broke `localhost:9595` / integration defaults)

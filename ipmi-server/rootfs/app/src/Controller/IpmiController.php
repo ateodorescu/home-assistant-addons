@@ -34,27 +34,42 @@ class IpmiController
     const DEFAULT_PORT = 623;
     public const PASSWORD_HEADER = 'X-Ipmi-Password';
     public const KG_KEY_HEADER = 'X-Ipmi-Kg-Key';
+    public const API_VERSION = 1;
+    public const ADDON_VERSION = '2.6.0';
+    public const CAPABILITY_RESILIENT_POLL = 'resilient_poll';
+    public const CAPABILITY_SENSOR_TYPES_FILTER = 'sensor_types_filter';
+    public const CAPABILITY_STATUSES = 'statuses';
+
+    /** @var list<string> */
+    private const API_CAPABILITIES = [
+        self::CAPABILITY_RESILIENT_POLL,
+        self::CAPABILITY_SENSOR_TYPES_FILTER,
+        self::CAPABILITY_STATUSES,
+    ];
+
+    public function meta(): JsonResponse
+    {
+        return new JsonResponse($this->apiMetadata());
+    }
 
     public function index(Request $request): JsonResponse
     {
         $this->hydrateSecrets($request);
-        $info = $this->getDeviceInfo($request);
+        $requestedTypes = $this->parseRequestedSensorTypes($request);
+        $info = $this->getDeviceInfo($request, $requestedTypes);
 
         if ($info['success']) {
-            $sensors = $this->getSensors($request);
-
-            if ($sensors['success']) {
-                $info = array_merge($info, $sensors);
+            if ($requestedTypes !== null && count($requestedTypes) === 0) {
+                $info = array_merge($info, $this->emptySensorPayload());
+            } else {
+                $sensors = $this->getSensors($request, $requestedTypes);
+                $info['sensors'] = $sensors['sensors'] ?? $this->emptySensorBuckets();
+                $info['states'] = $sensors['states'] ?? [];
+                $info['statuses'] = $sensors['statuses'] ?? [];
             }
         }
 
-        $info['debug'] = implode("\n", $this->debug);
-
-        if (array_key_exists('message', $info)) {
-            $info['message'] = $this->anonymizeSecrets($info['message']);
-        }
-
-        return new JsonResponse($info);
+        return $this->finalizeJsonResponse($info);
     }
 
     public function command(Request $request): JsonResponse
@@ -67,7 +82,7 @@ class IpmiController
         $ret = $this->runCommand($cmd);
         $done = ($ret !== false);
 
-        return new JsonResponse([
+        return $this->finalizeJsonResponse([
             'success' => $done,
             'output' => $done ? $ret : implode("\n", $this->debug)
         ]);
@@ -76,14 +91,21 @@ class IpmiController
     public function sensors(Request $request): JsonResponse
     {
         $this->hydrateSecrets($request);
-        $response = $this->getSensors($request);
-        $response['debug'] = implode("\n", $this->debug);
-
-        if (array_key_exists('message', $response)) {
-            $response['message'] = $this->anonymizeSecrets($response['message']);
+        $requestedTypes = $this->parseRequestedSensorTypes($request);
+        if ($requestedTypes !== null && count($requestedTypes) === 0) {
+            return $this->finalizeJsonResponse(array_merge(
+                ['success' => true],
+                $this->emptySensorPayload()
+            ));
         }
 
-        return new JsonResponse($response);
+        $response = $this->getSensors($request, $requestedTypes);
+        $response['sensors'] = $response['sensors'] ?? $this->emptySensorBuckets();
+        $response['states'] = $response['states'] ?? [];
+        $response['statuses'] = $response['statuses'] ?? [];
+        $response['success'] = true;
+
+        return $this->finalizeJsonResponse($response);
     }
 
     public function power_on(Request $request): JsonResponse
@@ -116,6 +138,169 @@ class IpmiController
         $id = preg_replace("/[^A-Za-z0-9 _]/", '', $name);
 
         return strtolower(str_replace(' ', '_', $id));
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function apiMetadata(): array
+    {
+        return [
+            'api_version' => self::API_VERSION,
+            'addon_version' => self::ADDON_VERSION,
+            'capabilities' => self::API_CAPABILITIES,
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $payload
+     */
+    private function finalizeJsonResponse(array $payload): JsonResponse
+    {
+        $payload = array_merge($this->apiMetadata(), $payload);
+        $payload['debug'] = implode("\n", $this->debug);
+
+        if (array_key_exists('message', $payload)) {
+            $payload['message'] = $this->anonymizeSecrets((string) $payload['message']);
+        }
+
+        return new JsonResponse($payload);
+    }
+
+    /**
+     * Parse sensor_types query param.
+     *
+     * null  = omitted (legacy full discovery)
+     * []    = explicit empty (power / device only)
+     * list  = only these integration sensor groups
+     *
+     * @return list<string>|null
+     */
+    private function parseRequestedSensorTypes(Request $request): ?array
+    {
+        if (!$request->query->has('sensor_types')) {
+            return null;
+        }
+
+        $raw = trim((string) $request->query->get('sensor_types', ''));
+        if ($raw === '') {
+            return [];
+        }
+
+        $requested = [];
+        foreach (explode(',', $raw) as $part) {
+            $part = trim($part);
+            if ($part !== '' && \in_array($part, $this->allSensorTypeKeys(), true)) {
+                $requested[] = $part;
+            }
+        }
+
+        return array_values(array_unique($requested));
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function allSensorTypeKeys(): array
+    {
+        return array_values(array_unique(array_merge(
+            array_values($this->unitsOfMeasure),
+            ['time']
+        )));
+    }
+
+    /**
+     * @return array<string, array<string, string>>
+     */
+    private function emptySensorBuckets(): array
+    {
+        $buckets = [];
+        foreach ($this->allSensorTypeKeys() as $type) {
+            $buckets[$type] = [];
+        }
+
+        return $buckets;
+    }
+
+    /**
+     * @return array{sensors: array<string, array<string, string>>, states: array<string, mixed>, statuses: array<string, string>}
+     */
+    private function emptySensorPayload(): array
+    {
+        return [
+            'sensors' => $this->emptySensorBuckets(),
+            'states' => [],
+            'statuses' => [],
+        ];
+    }
+
+    /**
+     * @param list<string>|null $requestedTypes
+     */
+    private function shouldIncludeSensorType(?array $requestedTypes, string $type): bool
+    {
+        if ($requestedTypes === null) {
+            return true;
+        }
+
+        return \in_array($type, $requestedTypes, true);
+    }
+
+    /**
+     * @param list<string>|null $requestedTypes
+     */
+    private function shouldSkipFru(?array $requestedTypes): bool
+    {
+        return $requestedTypes !== null && count($requestedTypes) === 0;
+    }
+
+    /**
+     * @param list<string>|null $requestedTypes
+     */
+    private function shouldRunSdr(?array $requestedTypes): bool
+    {
+        if ($requestedTypes === null) {
+            return true;
+        }
+
+        if (count($requestedTypes) === 0) {
+            return false;
+        }
+
+        foreach ($requestedTypes as $type) {
+            if ($type !== 'power' && $type !== 'time') {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @param list<string>|null $requestedTypes
+     */
+    private function shouldRunDcmi(?array $requestedTypes): bool
+    {
+        if ($requestedTypes === null) {
+            return true;
+        }
+
+        return \in_array('power', $requestedTypes, true)
+            || \in_array('time', $requestedTypes, true);
+    }
+
+    /**
+     * True when ipmitool returned a parseable reading (including 0 RPM under cr/nc/nr).
+     * Skips empty rows and explicit "no reading" placeholders.
+     */
+    private function hasUsableSensorReading(string $reading): bool
+    {
+        $reading = trim($reading);
+        if ($reading === '') {
+            return false;
+        }
+
+        return stripos($reading, 'no reading') === false;
     }
 
     private function anonymizeSecrets(string $message): string
@@ -252,7 +437,7 @@ class IpmiController
             }
         }
 
-        return new JsonResponse([
+        return $this->finalizeJsonResponse([
             'success' => $done
         ]);
     }
@@ -387,7 +572,7 @@ class IpmiController
         return $cmd;
     }
 
-    private function getDeviceInfo(Request $request): array
+    private function getDeviceInfo(Request $request, ?array $requestedTypes = null): array
     {
         $response = [
             'success' => false,
@@ -398,7 +583,7 @@ class IpmiController
 
         if (empty($interface)) {
             foreach ($this->ipmiTypes as $interface) {
-                $response = $this->getDeviceInfoByInterface($request, $interface);
+                $response = $this->getDeviceInfoByInterface($request, $interface, $requestedTypes);
 
                 if ($response['success']) {
                     break;
@@ -406,13 +591,13 @@ class IpmiController
             }
         }
         else {
-            $response = $this->getDeviceInfoByInterface($request, $interface);
+            $response = $this->getDeviceInfoByInterface($request, $interface, $requestedTypes);
         }
 
         return $response;
     }
 
-    private function getDeviceInfoByInterface(Request $request, string $interface): array
+    private function getDeviceInfoByInterface(Request $request, string $interface, ?array $requestedTypes = null): array
     {
         $response = [
             'success' => false
@@ -433,11 +618,13 @@ class IpmiController
                     $results = explode(PHP_EOL, $ret);
                     $device = $this->extractValuesFromResults($results);
 
-                    $ret = $this->runCommand(array_merge($cmd, ['-I', $interface, 'fru']));
+                    if (!$this->shouldSkipFru($requestedTypes)) {
+                        $ret = $this->runCommand(array_merge($cmd, ['-I', $interface, 'fru']));
 
-                    if ($ret) {
-                        $results = explode(PHP_EOL, $ret);
-                        $device = array_merge($device, $this->extractValuesFromResults($results));
+                        if ($ret) {
+                            $results = explode(PHP_EOL, $ret);
+                            $device = array_merge($device, $this->extractValuesFromResults($results));
+                        }
                     }
 
                     $ret = $this->runCommand(array_merge($cmd, ['-I', $interface, 'chassis', 'power', 'status']));
@@ -485,7 +672,7 @@ class IpmiController
         return $data;
     }
 
-    private function getSensors(Request $request): array
+    private function getSensors(Request $request, ?array $requestedTypes = null): array
     {
         $response = [
             'success' => false,
@@ -496,7 +683,7 @@ class IpmiController
 
         if (empty($interface)) {
             foreach ($this->ipmiTypes as $interface) {
-                $response = $this->getSensorsByInterface($request, $interface);
+                $response = $this->getSensorsByInterface($request, $interface, $requestedTypes);
 
                 if ($response['success']) {
                     break;
@@ -504,19 +691,20 @@ class IpmiController
             }
         }
         else {
-            $response = $this->getSensorsByInterface($request, $interface);
+            $response = $this->getSensorsByInterface($request, $interface, $requestedTypes);
         }
 
         return $response;
     }
 
-    private function getSensorsByInterface(Request $request, string $interface): array
+    private function getSensorsByInterface(Request $request, string $interface, ?array $requestedTypes = null): array
     {
         $response = [
             'success' => false
         ];
 
         $states = [];
+        $statuses = [];
         $sensorData = [];
 
         foreach ($this->unitsOfMeasure as $uom => $type) {
@@ -527,13 +715,13 @@ class IpmiController
 
         if ($cmd !== false) {
             try {
-//                $response['success'] = $this->extractFromSensorCommand($cmd, $interface, $sensorData, $states);
-                $response['success'] = $this->extractFromSdrCommand($cmd, $interface, $sensorData, $states);
-                // DCMI is optional and often unsupported; skip it when SDR already failed
-                // so auto-detect does not burn another full command timeout per interface.
-                if ($response['success']) {
-                    $this->extractFromDcmiPowerReadingCommand($cmd, $interface, $sensorData, $states);
+                if ($this->shouldRunSdr($requestedTypes)) {
+                    $this->extractFromSdrCommand($cmd, $interface, $sensorData, $states, $statuses, $requestedTypes);
                 }
+                if ($this->shouldRunDcmi($requestedTypes)) {
+                    $this->extractFromDcmiPowerReadingCommand($cmd, $interface, $sensorData, $states, $requestedTypes);
+                }
+                $response['success'] = true;
             } catch (\Exception $exception) {
                 $response['message'] = $exception->getMessage();
             }
@@ -541,11 +729,12 @@ class IpmiController
 
         $response['sensors'] = $sensorData;
         $response['states'] = $states;
+        $response['statuses'] = $statuses;
 
         return $response;
     }
 
-    private function extractFromSensorCommand(array $cmd, string $interface, array &$sensorData, array &$states): bool
+    private function extractFromSensorCommand(array $cmd, string $interface, array &$sensorData, array &$states, array &$statuses): bool
     {
         $ret = $this->runCommand(array_merge($cmd, ['-I', $interface, 'sensor']), true);
 
@@ -557,17 +746,20 @@ class IpmiController
                     if (!empty($line)) {
                         $values = array_map('trim', explode('|', $line));
 
-                        if ($values[3] === 'ok') {
-                            $description = $values[0];
-                            $id = $this->generateId($description);
-                            $value = $values[1];
-                            $uom = $values[2];
-                            $type = array_key_exists($uom, $this->unitsOfMeasure) ? $this->unitsOfMeasure[$uom] : null;
+                        if (count($values) < 4 || !$this->hasUsableSensorReading($values[1])) {
+                            continue;
+                        }
 
-                            if ($type) {
-                                $sensorData[$type][$id] = $description;
-                                $states[$id] = $value;
-                            }
+                        $description = $values[0];
+                        $id = $this->generateId($description);
+                        $value = $values[1];
+                        $uom = $values[2];
+                        $type = array_key_exists($uom, $this->unitsOfMeasure) ? $this->unitsOfMeasure[$uom] : null;
+
+                        if ($type) {
+                            $sensorData[$type][$id] = $description;
+                            $states[$id] = $value;
+                            $statuses[$id] = $values[3];
                         }
                     }
                 }
@@ -584,7 +776,14 @@ class IpmiController
     }
 
 
-    private function extractFromSdrCommand(array $cmd, string $interface, array &$sensorData, array &$states): bool
+    private function extractFromSdrCommand(
+        array $cmd,
+        string $interface,
+        array &$sensorData,
+        array &$states,
+        array &$statuses,
+        ?array $requestedTypes = null
+    ): bool
     {
         $ret = $this->runCommand(array_merge($cmd, ['-I', $interface, 'sdr', 'list', 'full']), true);
 
@@ -596,25 +795,33 @@ class IpmiController
                     if (!empty($line)) {
                         $values = array_map('trim', explode('|', $line));
 
-                        if ($values[2] === 'ok') {
-                            $description = $values[0];
-                            $id = $this->generateId($description);
-                            $value = $values[1];
+                        if (count($values) < 3 || !$this->hasUsableSensorReading($values[1])) {
+                            continue;
+                        }
 
-                            foreach($this->unitsOfMeasure as $uom => $type) {
-                                if (str_contains($value, $uom)) {
-                                    $value = trim(str_replace($uom, '', $value));
+                        $description = $values[0];
+                        $id = $this->generateId($description);
+                        $value = $values[1];
+                        $status = $values[2];
 
-                                    $id_pattern = "/^".$id."/";
-                                    $id_count = count($this->preg_array_key_exists($id_pattern, $sensorData[$type]));
-                                    if ($id_count > 0) {
-                                        $description .= ' ' . $id_count+1;
-                                        $id = $this->generateId($description);
-                                    }
+                        foreach($this->unitsOfMeasure as $uom => $type) {
+                            if (!$this->shouldIncludeSensorType($requestedTypes, $type)) {
+                                continue;
+                            }
 
-                                    $sensorData[$type][$id] = $description;
-                                    $states[$id] = $value;
+                            if (str_contains($value, $uom)) {
+                                $value = trim(str_replace($uom, '', $value));
+
+                                $id_pattern = "/^".$id."/";
+                                $id_count = count($this->preg_array_key_exists($id_pattern, $sensorData[$type]));
+                                if ($id_count > 0) {
+                                    $description .= ' ' . ($id_count + 1);
+                                    $id = $this->generateId($description);
                                 }
+
+                                $sensorData[$type][$id] = $description;
+                                $states[$id] = $value;
+                                $statuses[$id] = $status;
                             }
                         }
                     }
@@ -625,7 +832,13 @@ class IpmiController
         return $ret !== false;
     }
 
-    private function extractFromDcmiPowerReadingCommand(array $cmd, string $interface, array &$sensorData, array &$states): void
+    private function extractFromDcmiPowerReadingCommand(
+        array $cmd,
+        string $interface,
+        array &$sensorData,
+        array &$states,
+        ?array $requestedTypes = null
+    ): void
     {
         $ret = $this->runCommand(array_merge($cmd, ['-I', $interface, 'dcmi', 'power', 'reading']), true);
 
@@ -640,12 +853,20 @@ class IpmiController
 
                     if (!empty($result)) {
                         if (str_contains($result, 'Watts')) {
+                            if (!$this->shouldIncludeSensorType($requestedTypes, 'power')) {
+                                continue;
+                            }
+
                             $values = array_map('trim', explode(':', $result));
                             $description = $values[0];
                             $value = $values[1];
                             $value = trim(str_replace('Watts', '', $value));
                             $extract = true;
                         } else if (str_contains($result, 'Seconds')) {
+                            if (!$this->shouldIncludeSensorType($requestedTypes, 'time')) {
+                                continue;
+                            }
+
                             $description = 'Sampling period';
                             $pattern = "/" . $description . ":\K.+?(?=Seconds)/";
                             $success = preg_match($pattern, $result, $match);

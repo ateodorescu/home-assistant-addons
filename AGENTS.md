@@ -142,11 +142,16 @@ This field is **not** rewritten by the Docker/CI build. It is the Supervisor add
 **Release checklist (agents):**
 
 1. Update `ipmi-server/CHANGELOG.md` for the release.
-2. Set `version: "X.Y.Z"` in `ipmi-server/config.yaml`, commit, push to `main`.
-3. Publish a GitHub release with tag `vX.Y.Z` (must match config; leave pre-release unchecked for stable).
-4. After the release exists, set `version: "dev"` again, commit, push to `main`.
+2. Set `version: "X.Y.Z"` in `ipmi-server/config.yaml` **and** update `ADDON_VERSION` in `ipmi-server/rootfs/app/src/Controller/IpmiController.php` to the same semver (exposed in API responses and the web UI).
+3. Commit and push to `main`.
+4. Publish a GitHub release:
+   - **Tag:** `vX.Y.Z` (with a leading `v`, e.g. `v2.6.0` — **not** bare `2.6.0`; must match config semver).
+   - **Title:** `home-assistant-addons vX.Y.Z` (e.g. `home-assistant-addons v2.6.0`).
+   - **Description:** include the changes for this version (copy from the new `CHANGELOG.md` section).
+   - Leave pre-release unchecked for stable releases.
+5. After the release exists, set `version: "dev"` in `config.yaml`, commit, and push to `main`. Leave `IpmiController::ADDON_VERSION` at the released semver (it reflects the last published add-on version while edge builds run on `"dev"`).
 
-Do **not** leave a semver on `main` after a release — CI fails with `Add-on version identifier must be 'dev'`. Do **not** invent a different versioning scheme; stick to this edge/`dev` ↔ release/semver cycle.
+Do **not** leave a semver on `main` in `config.yaml` after a release — CI fails with `Add-on version identifier must be 'dev'`. Do **not** invent a different versioning scheme; stick to this edge/`dev` ↔ release/semver cycle. Keep `config.yaml` `version` and `IpmiController::ADDON_VERSION` in sync whenever bumping for a release.
 
 ## Security & secrets
 

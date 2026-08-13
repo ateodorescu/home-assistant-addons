@@ -16,6 +16,10 @@ app_ipmi:
   path: /
   controller: App\Controller\IpmiController::index
 
+app_ipmi_meta:
+  path: /meta
+  controller: App\Controller\IpmiController::meta
+
 app_command:
   path: /command
   controller: App\Controller\IpmiController::command

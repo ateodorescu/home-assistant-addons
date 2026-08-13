@@ -333,6 +333,8 @@ class WebUiController
         $interfaces = ['', 'lanplus', 'lan', 'imb', 'open'];
         $privileges = ['', 'CALLBACK', 'USER', 'OPERATOR', 'ADMINISTRATOR'];
         $actions = self::ACTIONS;
+        $apiVersion = IpmiController::API_VERSION;
+        $addonVersion = IpmiController::ADDON_VERSION;
 
         ob_start();
         include dirname(__DIR__, 2).'/templates/web_ui.php';

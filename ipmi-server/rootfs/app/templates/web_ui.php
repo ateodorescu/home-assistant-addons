@@ -6,6 +6,8 @@
 /** @var array<string, string> $actions */
 /** @var string $action */
 /** @var list<array<string, string>> $servers */
+/** @var int $apiVersion */
+/** @var string $addonVersion */
 
 $e = static fn (?string $value): string => htmlspecialchars((string) $value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
 $serversJson = json_encode($servers, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_THROW_ON_ERROR);
@@ -58,8 +60,16 @@ $serversJson = json_encode($servers, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS
             font-size: 1.05rem;
         }
         .lead {
+            margin: 0 0 0.5rem;
+            color: var(--muted);
+        }
+        .version {
             margin: 0 0 1.5rem;
             color: var(--muted);
+            font-size: 0.85rem;
+        }
+        .version code {
+            font-size: 0.85em;
         }
         .card {
             background: var(--surface);
@@ -251,6 +261,7 @@ $serversJson = json_encode($servers, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS
 <main>
     <h1>IPMItool server</h1>
     <p class="lead">Connect to a BMC, read sensors, run power commands, or send a custom <code>ipmitool</code> command.</p>
+    <p class="version">API version <?= $e((string) $apiVersion) ?> · Add-on <?= $e($addonVersion) ?></p>
 
     <form id="ipmi-form" method="post" action="">
         <input type="hidden" name="server_id" id="server_id" value="<?= $e($form['server_id']) ?>">
