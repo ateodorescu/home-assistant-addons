@@ -35,7 +35,7 @@ class IpmiController
     public const PASSWORD_HEADER = 'X-Ipmi-Password';
     public const KG_KEY_HEADER = 'X-Ipmi-Kg-Key';
     public const API_VERSION = 1;
-    public const ADDON_VERSION = '2.6.0';
+    public const ADDON_VERSION = '2.7.0';
     public const CAPABILITY_RESILIENT_POLL = 'resilient_poll';
     public const CAPABILITY_SENSOR_TYPES_FILTER = 'sensor_types_filter';
     public const CAPABILITY_STATUSES = 'statuses';
@@ -59,13 +59,22 @@ class IpmiController
         $info = $this->getDeviceInfo($request, $requestedTypes);
 
         if ($info['success']) {
-            if ($requestedTypes !== null && count($requestedTypes) === 0) {
+            if ($this->isPowerOnlyPoll($requestedTypes)) {
                 $info = array_merge($info, $this->emptySensorPayload());
             } else {
                 $sensors = $this->getSensors($request, $requestedTypes);
-                $info['sensors'] = $sensors['sensors'] ?? $this->emptySensorBuckets();
-                $info['states'] = $sensors['states'] ?? [];
-                $info['statuses'] = $sensors['statuses'] ?? [];
+                if (!empty($sensors['success'])) {
+                    $info['sensors'] = $sensors['sensors'] ?? $this->emptySensorBuckets();
+                    $info['states'] = $sensors['states'] ?? [];
+                    $info['statuses'] = $sensors['statuses'] ?? [];
+                } else {
+                    // Pre-2.6.0 clients treat success=true as a complete poll and
+                    // will not fall back to RMCP. Empty buckets would drop sensors.
+                    $info['success'] = false;
+                    if (!empty($sensors['message'])) {
+                        $info['message'] = $sensors['message'];
+                    }
+                }
             }
         }
 
@@ -92,7 +101,7 @@ class IpmiController
     {
         $this->hydrateSecrets($request);
         $requestedTypes = $this->parseRequestedSensorTypes($request);
-        if ($requestedTypes !== null && count($requestedTypes) === 0) {
+        if ($this->isPowerOnlyPoll($requestedTypes)) {
             return $this->finalizeJsonResponse(array_merge(
                 ['success' => true],
                 $this->emptySensorPayload()
@@ -100,10 +109,11 @@ class IpmiController
         }
 
         $response = $this->getSensors($request, $requestedTypes);
-        $response['sensors'] = $response['sensors'] ?? $this->emptySensorBuckets();
-        $response['states'] = $response['states'] ?? [];
-        $response['statuses'] = $response['statuses'] ?? [];
-        $response['success'] = true;
+        if (!empty($response['success'])) {
+            $response['sensors'] = $response['sensors'] ?? $this->emptySensorBuckets();
+            $response['states'] = $response['states'] ?? [];
+            $response['statuses'] = $response['statuses'] ?? [];
+        }
 
         return $this->finalizeJsonResponse($response);
     }
@@ -247,11 +257,21 @@ class IpmiController
     }
 
     /**
+     * Explicit empty sensor_types (power / device only). Omitted param is legacy full discovery.
+     *
+     * @param list<string>|null $requestedTypes
+     */
+    private function isPowerOnlyPoll(?array $requestedTypes): bool
+    {
+        return $requestedTypes !== null && count($requestedTypes) === 0;
+    }
+
+    /**
      * @param list<string>|null $requestedTypes
      */
     private function shouldSkipFru(?array $requestedTypes): bool
     {
-        return $requestedTypes !== null && count($requestedTypes) === 0;
+        return $this->isPowerOnlyPoll($requestedTypes);
     }
 
     /**
@@ -715,13 +735,16 @@ class IpmiController
 
         if ($cmd !== false) {
             try {
+                $sdrOk = true;
                 if ($this->shouldRunSdr($requestedTypes)) {
-                    $this->extractFromSdrCommand($cmd, $interface, $sensorData, $states, $statuses, $requestedTypes);
+                    $sdrOk = $this->extractFromSdrCommand($cmd, $interface, $sensorData, $states, $statuses, $requestedTypes);
                 }
-                if ($this->shouldRunDcmi($requestedTypes)) {
+                // DCMI is optional; skip it when SDR was required and failed so
+                // auto-detect can try the next interface without another timeout.
+                if ($sdrOk && $this->shouldRunDcmi($requestedTypes)) {
                     $this->extractFromDcmiPowerReadingCommand($cmd, $interface, $sensorData, $states, $requestedTypes);
                 }
-                $response['success'] = true;
+                $response['success'] = $sdrOk;
             } catch (\Exception $exception) {
                 $response['message'] = $exception->getMessage();
             }

@@ -1,3 +1,11 @@
+## 2.7.0
+
+- Restore pre-2.6.0 poll success semantics so older home-assistant-ipmi releases keep working without an integration upgrade ([#39](https://github.com/ateodorescu/home-assistant-addons/issues/39))
+- Do not return `success: true` with empty `sensors`/`states` when SDR collection failed (clients treated that as a complete poll and dropped all sensor entities)
+- Restore interface auto-detect: try the next IPMI interface when SDR fails instead of stopping after the first connection
+- Skip optional DCMI power reading when SDR already failed (faster auto-detect, same as 2.5.1)
+- Keep optional `sensor_types` (omit = full discovery, empty = power-only) and API metadata; those remain additive
+
 ## 2.6.0
 
 - Resilient default poll (`GET /`): BMC info and chassis power remain required; FRU, SDR, and DCMI are best-effort and no longer fail the whole response when optional steps fail

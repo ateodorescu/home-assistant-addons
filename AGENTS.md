@@ -18,6 +18,21 @@ Published images:
 - Add-on: `ghcr.io/ateodorescu/ipmi-server/{arch}`
 - Standalone: `ghcr.io/ateodorescu/ipmi-server-standalone`
 
+## Backward compatibility (mandatory)
+
+**Never break backward compatibility.** This is a hard rule, not a preference. The add-on JSON API is consumed by older [home-assistant-ipmi](https://github.com/ateodorescu/home-assistant-ipmi) releases, Ingress `/ui`, and any client already polling `GET /` and `GET /sensors`. A new add-on version must keep working with those existing clients. Do not require a matching integration upgrade for previously working sensors, power controls, or device info.
+
+Compatibility means **behavior**, not only key names:
+
+- Keep existing routes, query params, and JSON keys (`success`, `message`/`output`, `device`, `sensors`, `states`, `power_on`, `debug`). Additive keys (`api_version`, `capabilities`, `statuses`, …) are allowed; changing or removing old ones is not.
+- Optional new query params (for example `sensor_types`) must be omitted-by-default = legacy full discovery. Unknown or unused params from old clients must be ignored.
+- Do not change what `success: true` means. If SDR/sensor collection failed, do not report success with empty `sensors`/`states` in a way that makes a client skip fallback and drop entities. Empty buckets are not a substitute for a failed poll.
+- Preserve interface auto-detection: when `interface` is empty, keep looping `$ipmiTypes` and do not stop on the first interface that merely connected if sensor collection still failed.
+- New features (filters, metadata, best-effort FRU/DCMI) must not skip SDR, FRU, or DCMI on the default path used by old clients.
+- Do not use a major version bump, a companion-integration release, or “clients should upgrade” as a way to ship a breaking change.
+
+If a change cannot be made without breaking existing clients, do not ship it.
+
 ## Repository layout
 
 ```
@@ -69,11 +84,11 @@ Common query params for IPMI connection: `host`, `port` (default `623`), `user`,
 
 Optional secret headers (also supported): `X-Ipmi-Password`, `X-Ipmi-Kg-Key`.
 
-Responses are JSON. Prefer keeping `success`, `message`/`output`, `device`, `sensors`, `states`, and password anonymization behavior stable — the HA integration depends on this shape.
+Responses are JSON. The HA integration depends on this shape **and** on the meaning of `success` / populated `sensors`+`states`. See **Backward compatibility (mandatory)** — never break it.
 
 ## Coding conventions
 
-- Keep the API surface and JSON response keys backward-compatible unless a major version bump is intentional.
+- **Never break backward compatibility** (see the dedicated section above). Additive API changes only; default request/response behavior must match what older integrations already rely on.
 - Always anonymize passwords in logs/error/`debug` output (`anonymizeSecrets`); never echo credentials back.
 - Prefer `Process` over shell strings; pass argv arrays to avoid injection.
 - Interface auto-detection loops over `$ipmiTypes` when `interface` is empty — preserve that behavior.
