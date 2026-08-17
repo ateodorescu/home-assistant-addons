@@ -53,8 +53,9 @@ ENV OPENSSL_CONF=/etc/ssl/ipmitool-openssl.cnf
 # 4. Install PHP extensions
 RUN docker-php-ext-install bcmath pcntl zip mbstring intl
 
-# 5. Configure Nginx & Supervisor
+# 5. Configure Nginx, PHP-FPM (unix socket), and Supervisor
 COPY /ipmi-server-standalone/nginx.conf /etc/nginx/http.d/default.conf
+COPY /ipmi-server-standalone/php-fpm-zz-docker.conf /usr/local/etc/php-fpm.d/zz-docker.conf
 COPY /ipmi-server-standalone/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
 # 6. Set up app

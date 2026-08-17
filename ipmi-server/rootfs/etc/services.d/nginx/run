@@ -5,8 +5,17 @@
 # Runs the Nginx daemon
 # ==============================================================================
 
-# Wait for PHP-FPM to become available
-bashio::net.wait_for 9000
+# Wait for PHP-FPM unix socket (not TCP 9000 — that collides under host_network).
+socket="/run/php-fpm.sock"
+for _ in $(seq 1 60); do
+    if [[ -S "${socket}" ]]; then
+        break
+    fi
+    sleep 0.5
+done
+if [[ ! -S "${socket}" ]]; then
+    bashio::exit.nok "PHP-FPM socket ${socket} did not appear"
+fi
 
 bashio::log.info "Starting NGinx..."
 

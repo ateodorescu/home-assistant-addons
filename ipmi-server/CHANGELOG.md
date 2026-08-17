@@ -1,3 +1,7 @@
+## 2.7.1
+
+- Use a Unix socket for nginx ↔ PHP-FPM so host-network installs no longer collide with other services on TCP 9000 ([#40](https://github.com/ateodorescu/home-assistant-addons/issues/40))
+
 ## 2.7.0
 
 - Restore pre-2.6.0 poll success semantics so older home-assistant-ipmi releases keep working without an integration upgrade ([#39](https://github.com/ateodorescu/home-assistant-addons/issues/39))

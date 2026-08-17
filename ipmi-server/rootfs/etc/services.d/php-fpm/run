@@ -19,5 +19,8 @@ chmod 600 /data/ipmi-servers.json
 # controller constructor deps are picked up after code changes.
 rm -rf /app/var/cache/*
 
+# Drop a stale socket left behind after a crash so FPM can bind again.
+rm -f /run/php-fpm.sock
+
 #/usr/sbin/php-fpm* -F
 exec php-fpm84 --nodaemonize

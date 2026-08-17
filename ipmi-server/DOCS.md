@@ -74,6 +74,7 @@ URL-encode spaces and special characters in `params`. Responses are JSON (`succe
 - **504 Gateway Timeout** under Ingress: the BMC call took too long (wrong interface, unreachable host, or auto-detect trying many types). Prefer a fixed `lanplus` interface.
 - **Unable to establish IPMI v2 / RMCP+ session**: check username/password, privilege, cipher suite (`-C 3` / `-C 17`), and that the BMC allows the Home Assistant host IP.
 - **Works from a laptop but not the add-on**: almost always BMC IP access control or firewall — allow the HA host address.
+- **`unable to bind listening socket for address '127.0.0.1:9000'`**: that was a host-network collision with another service on TCP 9000 (often Portainer). Current builds use a Unix socket for PHP-FPM instead; Ingress / 9595 port changes never affected that bind. Update the add-on, or temporarily move the other service off host port 9000.
 
 ## Support
 
