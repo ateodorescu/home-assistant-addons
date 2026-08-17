@@ -203,6 +203,7 @@ class ServerConfigStore
             'interface' => trim((string) ($server['interface'] ?? '')),
             'kg_key' => (string) ($server['kg_key'] ?? ''),
             'privilege_level' => trim((string) ($server['privilege_level'] ?? '')),
+            'extra' => trim((string) ($server['extra'] ?? '')),
         ];
     }
 }

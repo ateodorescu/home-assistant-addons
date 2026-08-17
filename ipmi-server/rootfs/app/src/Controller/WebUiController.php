@@ -63,6 +63,7 @@ class WebUiController
             'interface' => '',
             'kg_key' => '',
             'privilege_level' => '',
+            'extra' => '',
             'command_args' => '',
         ];
         $result = null;
@@ -107,6 +108,7 @@ class WebUiController
                     'user' => $form['user'],
                     'interface' => $form['interface'],
                     'privilege_level' => $form['privilege_level'],
+                    'extra' => $form['extra'],
                 ], static fn (string $value): bool => $value !== '');
 
                 $result = $this->runAction($action, $query, $form['password'], $form['kg_key'], $form['command_args']);
@@ -173,6 +175,7 @@ class WebUiController
                     'interface' => $form['interface'],
                     'kg_key' => $form['kg_key'],
                     'privilege_level' => $form['privilege_level'],
+                    'extra' => $form['extra'],
                 ]);
 
                 return [
@@ -309,6 +312,13 @@ class WebUiController
         if (($query['privilege_level'] ?? '') !== '') {
             $parts[] = '-L';
             $parts[] = $query['privilege_level'];
+        }
+        if (($query['extra'] ?? '') !== '') {
+            foreach (str_getcsv($query['extra'], ' ', '"', '') as $arg) {
+                if ($arg !== '') {
+                    $parts[] = $arg;
+                }
+            }
         }
 
         foreach (str_getcsv($commandArgs, ' ', '"', '') as $arg) {

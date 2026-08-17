@@ -33,7 +33,7 @@ From the UI you can:
 | -------------- | ----------------------------------------------------------------------------------------------- |
 | Interface      | Prefer **`lanplus`** (IPMI 2.0). Auto detect tries several interfaces and can be slower.        |
 | Privilege      | Use **ADMINISTRATOR** if your BMC user requires it.                                             |
-| Cipher suite   | Some BMCs need an explicit suite (common on Super Micro: try custom args `-C 3`).               |
+| Extra params   | Additional `ipmitool` flags, saved with the profile. Some BMCs need an explicit cipher suite (common on Super Micro: `-C 3`). |
 | Firewall / ACL | Allow the **Home Assistant host IP** on the BMC’s IP access list. Your laptop IP is not enough. |
 
 Passwords are only sent to this add-on. They are anonymized as `####` in logs and error/debug output.

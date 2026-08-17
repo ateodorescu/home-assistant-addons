@@ -1,5 +1,5 @@
 <?php
-/** @var array{server_id:string,name:string,host:string,port:string,user:string,password:string,interface:string,kg_key:string,privilege_level:string,command_args:string} $form */
+/** @var array{server_id:string,name:string,host:string,port:string,user:string,password:string,interface:string,kg_key:string,privilege_level:string,extra:string,command_args:string} $form */
 /** @var array<string,mixed>|null $result */
 /** @var list<string> $interfaces */
 /** @var list<string> $privileges */
@@ -332,8 +332,12 @@ $serversJson = json_encode($servers, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS
                     Kg key (optional)
                     <input type="text" name="kg_key" id="kg_key" value="<?= $e($form['kg_key']) ?>" autocomplete="off">
                 </label>
+                <label class="full">
+                    Extra params (optional)
+                    <input type="text" name="extra" id="extra" value="<?= $e($form['extra']) ?>" placeholder="-C 3" autocomplete="off">
+                </label>
             </div>
-            <p class="hint">Credentials are sent to this add-on only and used to run <code>ipmitool</code> on the backend. Leave password blank when updating a saved server to keep the stored password. Prefer Interface <code>lanplus</code> for remote BMCs; Auto detect only applies to Fetch sensors.</p>
+            <p class="hint">Credentials are sent to this add-on only and used to run <code>ipmitool</code> on the backend. Leave password blank when updating a saved server to keep the stored password. Prefer Interface <code>lanplus</code> for remote BMCs; Auto detect only applies to Fetch sensors. Extra params are passed through to <code>ipmitool</code> (for example <code>-C 3</code> for Super Micro cipher suite 3).</p>
         </section>
 
         <section class="card">
@@ -535,6 +539,7 @@ $serversJson = json_encode($servers, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS
         document.getElementById('interface').value = server.interface || '';
         document.getElementById('privilege_level').value = server.privilege_level || '';
         document.getElementById('kg_key').value = server.kg_key || '';
+        document.getElementById('extra').value = server.extra || '';
     };
 
     const renderSensors = (result) => {

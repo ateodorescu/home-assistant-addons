@@ -1,3 +1,7 @@
+## 2.7.2
+
+- Web UI: add Extra params on saved connection profiles (e.g. `-C 3`) and pass them through to sensors, power commands, and custom commands
+
 ## 2.7.1
 
 - Use a Unix socket for nginx ↔ PHP-FPM so host-network installs no longer collide with other services on TCP 9000 ([#40](https://github.com/ateodorescu/home-assistant-addons/issues/40))

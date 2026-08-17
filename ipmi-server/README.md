@@ -33,7 +33,7 @@ Use this add-on with the companion [`ipmi` integration](https://github.com/ateod
 
 ### Web UI
 
-Open the add-on and choose **Open Web UI**. Enter BMC connection details to:
+Open the add-on and choose **Open Web UI**. Enter BMC connection details (including optional extra `ipmitool` flags such as `-C 3`) to:
 
 - fetch sensors
 - run power on / off / cycle / reset / soft shutdown
