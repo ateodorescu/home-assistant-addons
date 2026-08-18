@@ -74,7 +74,7 @@ RUN apk update && \
     mkdir -p /app/cache /app/var/cache/prod /app/var/log /var/tmp/nginx && \
     chmod -R 777 /app/var/ && \
     ipmitool -V && \
-    ipmitool -h 2>&1 | grep -q 'lanplus' && \
+    (ipmitool -h 2>&1 || true) | grep 'lanplus' >/dev/null && \
     echo "ipmitool lanplus interface OK"
 
 # Copy root filesystem

@@ -45,7 +45,7 @@ RUN apk add --no-cache \
     rm -rf /tmp/ipmitool /tmp/ipmitool.tar.gz /tmp/iana.patch && \
     apk del .ipmitool-build && \
     ipmitool -V && \
-    ipmitool -h 2>&1 | grep -q 'lanplus'
+    (ipmitool -h 2>&1 || true) | grep 'lanplus' >/dev/null
 
 COPY /ipmi-server/rootfs/etc/ssl/ipmitool-openssl.cnf /etc/ssl/ipmitool-openssl.cnf
 ENV OPENSSL_CONF=/etc/ssl/ipmitool-openssl.cnf

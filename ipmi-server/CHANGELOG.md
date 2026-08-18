@@ -1,3 +1,7 @@
+## 2.7.4
+
+- Fix add-on Docker build failing with exit 141 (`pipefail` + `grep -q` SIGPIPE when verifying the ipmitool lanplus interface)
+
 ## 2.7.3
 
 - Publish `linux/arm64` for the standalone image so HA Core on aarch64 (e.g. Raspberry Pi 5) can pull `ghcr.io/ateodorescu/ipmi-server-standalone` ([#42](https://github.com/ateodorescu/home-assistant-addons/issues/42))
