@@ -23,7 +23,7 @@ It lets you monitor sensors and control power on supported machines, including w
 
 No extra configuration is required for basic use.
 
-If you run Home Assistant in Linux/Docker **without HAOS**, deploy the standalone image instead — see [ipmi-server-standalone/README.md](../ipmi-server-standalone/README.md).
+If you run Home Assistant in Linux/Docker **without HAOS** (including aarch64 / Raspberry Pi), deploy the standalone image instead — see [ipmi-server-standalone/README.md](../ipmi-server-standalone/README.md).
 
 ## Usage
 

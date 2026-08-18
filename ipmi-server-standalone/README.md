@@ -1,6 +1,9 @@
 # ipmi-server-standalone docker image
 
 This is a docker image to run `ipmi-server` as a standalone image.
+
+Published image: `ghcr.io/ateodorescu/ipmi-server-standalone` (`linux/amd64` and `linux/arm64`). Docker selects the matching architecture on pull.
+
 `bash
     docker pull ghcr.io/ateodorescu/ipmi-server-standalone:latest
    `

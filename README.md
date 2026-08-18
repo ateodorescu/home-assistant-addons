@@ -14,3 +14,6 @@ This repository has some custom add-ons for Home Assistant
 
 - Q: Why did I not use HAOS deployment and need a standalone image Docker?
 - A: HAOS has a supervisor who is responsible for downloading plugins, synchronizing configuration, managing lifecycle (start/stop/update), and network isolation. The HA core program does not know how to manipulate the Docker container of the host machine, so the "Add ons" option does not appear in the menu at all. So you need manual management. Otherwise, you can only use the ipmi protocol below v1.5(home-assistant-ipmi By default, a library is used that can handle v1.5)
+
+- Q: Is there an aarch64 standalone image (Raspberry Pi / HA Core)?
+- A: Yes. `ghcr.io/ateodorescu/ipmi-server-standalone` is a multi-arch image (`linux/amd64` and `linux/arm64`). Docker selects the matching architecture on pull.

@@ -35,7 +35,7 @@ class IpmiController
     public const PASSWORD_HEADER = 'X-Ipmi-Password';
     public const KG_KEY_HEADER = 'X-Ipmi-Kg-Key';
     public const API_VERSION = 1;
-    public const ADDON_VERSION = '2.7.2';
+    public const ADDON_VERSION = '2.7.3';
     public const CAPABILITY_RESILIENT_POLL = 'resilient_poll';
     public const CAPABILITY_SENSOR_TYPES_FILTER = 'sensor_types_filter';
     public const CAPABILITY_STATUSES = 'statuses';

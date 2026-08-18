@@ -1,3 +1,7 @@
+## 2.7.3
+
+- Publish `linux/arm64` for the standalone image so HA Core on aarch64 (e.g. Raspberry Pi 5) can pull `ghcr.io/ateodorescu/ipmi-server-standalone` ([#42](https://github.com/ateodorescu/home-assistant-addons/issues/42))
+
 ## 2.7.2
 
 - Web UI: add Extra params on saved connection profiles (e.g. `-C 3`) and pass them through to sensors, power commands, and custom commands

@@ -16,7 +16,7 @@ Two deployables share the same Symfony app:
 Published images:
 
 - Add-on: `ghcr.io/ateodorescu/ipmi-server/{arch}`
-- Standalone: `ghcr.io/ateodorescu/ipmi-server-standalone`
+- Standalone: `ghcr.io/ateodorescu/ipmi-server-standalone` (`linux/amd64`, `linux/arm64`)
 
 ## Backward compatibility (mandatory)
 
@@ -140,7 +140,7 @@ There is no test suite checked in yet (`App\Tests\` is reserved in Composer). If
 
 - CI: `.github/workflows/ci.yaml` → reusable `hassio-addons` addon CI (includes yamllint via `.yamllint`; see **YAML / yamllint / Prettier** above)
 - Deploy add-on: `.github/workflows/deploy.yaml` on release / successful CI on `main`
-- Standalone image: `.github/workflows/docker-standalone.yaml` on `main` and `v*` tags
+- Standalone image: `.github/workflows/docker-standalone.yaml` on `main` and `v*` tags (`linux/amd64` + `linux/arm64`; native ARM runner)
 
 Full workflow: `RELEASING.md`. Agents must follow the **version** rules below.
 
