@@ -1,6 +1,6 @@
 ---
 name: "IPMItool server"
-version: "2.7.4"
+version: "2.7.5"
 slug: "ipmi-server"
 description: "IPMItool server"
 url: "https://github.com/ateodorescu/home-assistant-addons"
@@ -11,7 +11,6 @@ arch:
 panel_icon: "mdi:server"
 init: false
 hassio_api: true
-host_network: true
 ingress: true
 ingress_stream: true
 ingress_entry: ui
@@ -23,11 +22,10 @@ schema:
   log_level: "list(trace|debug|info|notice|warning|error|fatal)"
 
 ports:
-  # App listens on 9595. With host_network this is the real host port (no remap).
-  9595/tcp: 9595
+  80/tcp: 9595
 
 ports_description:
-  9595/tcp: "Web UI / API (also available via Ingress)"
+  80/tcp: "Web UI / API (also available via Ingress)"
 
 # For published releases, set this so Supervisor pulls the prebuilt image.
 # For local Dockerfile builds/testing, comment it out.

@@ -1,3 +1,11 @@
+## 2.7.5
+
+- Drop `host_network`: outbound IPMI to LAN BMCs works from the container network (same as `ipmi-server-standalone`); restores normal `80/tcp → 9595` port mapping and standard Ingress on container port 8099, fixing host port collisions with other add-ons ([#43](https://github.com/ateodorescu/home-assistant-addons/issues/43))
+- Bump pinned Alpine `php84*` packages to `8.4.25-r0` (Alpine 3.24 repos dropped `8.4.24-r0`, which broke the Docker build with apk exit 10)
+- Upgrade `libcrypto3`/`libssl3`/`openssl-dev` to `3.5.8-r0` before building `ipmitool` (base image 21 still ships OpenSSL 3.5.7; Alpine 3.24 repos now only offer 3.5.8, so `apk add openssl` fails with exit 1)
+- Build `ipmitool` before installing `php84-openssl`, verify `lanplus` before removing build dependencies, and set `OPENSSL_CONF` only after the runtime config file is copied into the image
+- Align standalone image Dockerfile, nginx, and php-fpm with the add-on (Symfony front-controller routing, 120s timeouts, ipmitool build verification)
+
 ## 2.7.4
 
 - Fix add-on Docker build failing with exit 141 (`pipefail` + `grep -q` SIGPIPE when verifying the ipmitool lanplus interface)

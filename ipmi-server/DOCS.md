@@ -6,7 +6,7 @@ It is designed to work with the companion [**ipmi** integration](https://github.
 
 ## About IPMI
 
-IPMI (Intelligent Platform Management Interface) is a hardware management standard found on many servers and NAS boards (Dell iDRAC, HP iLO, Super Micro, etc.). Traffic usually uses **UDP port 623**. This add-on uses **host networking** so those packets can reach BMCs on your LAN.
+IPMI (Intelligent Platform Management Interface) is a hardware management standard found on many servers and NAS boards (Dell iDRAC, HP iLO, Super Micro, etc.). Traffic usually uses **UDP port 623**. The add-on runs `ipmitool` as a client to your BMC IP; outbound UDP from the container reaches BMCs on the same LAN as Home Assistant.
 
 ## Installation
 
@@ -40,7 +40,7 @@ Passwords are only sent to this add-on. They are anonymized as `####` in logs an
 
 ## HTTP API
 
-The service listens on port **9595** (and via Ingress). Because the add-on uses `host_network`, that is the real host port — there is no separate `80→9595` remap.
+The service is published on host port **9595** (`80/tcp → 9595` inside the container). Ingress uses the standard add-on port 8099.
 
 | Path                                                                    | Purpose                  |
 | ----------------------------------------------------------------------- | ------------------------ |
@@ -71,10 +71,12 @@ URL-encode spaces and special characters in `params`. Responses are JSON (`succe
 ## Troubleshooting
 
 - **Integration falls back to RMCP / connection refused on `:9595`**: confirm the add-on is **started**. From Core, use `http://localhost` or the HA host LAN IP with port **9595** (not `172.30.0.x` Core container IPs, and not port 80). Prefer **Open Web UI** (Ingress) for browser access.
+- **Web UI in browser at `:9595`**: use **`http://`**, not `https://` (the add-on serves plain HTTP). Open **`/ui`** for the sensor form; **`/`** is the JSON API and needs BMC query parameters.
+- **`bind() to 0.0.0.0:8099 failed (Address in use)`** in the log (add-on **2.5.0–2.7.4** with `host_network`): host port 8099 collided with another service; update to **2.7.5+**, which uses bridge networking and keeps Ingress on container port 8099 only.
 - **504 Gateway Timeout** under Ingress: the BMC call took too long (wrong interface, unreachable host, or auto-detect trying many types). Prefer a fixed `lanplus` interface.
 - **Unable to establish IPMI v2 / RMCP+ session**: check username/password, privilege, cipher suite (`-C 3` / `-C 17`), and that the BMC allows the Home Assistant host IP.
 - **Works from a laptop but not the add-on**: almost always BMC IP access control or firewall — allow the HA host address.
-- **`unable to bind listening socket for address '127.0.0.1:9000'`**: that was a host-network collision with another service on TCP 9000 (often Portainer). Current builds use a Unix socket for PHP-FPM instead; Ingress / 9595 port changes never affected that bind. Update the add-on, or temporarily move the other service off host port 9000.
+- **`unable to bind listening socket for address '127.0.0.1:9000'`** (older builds): host-network PHP-FPM collided with another service on TCP 9000 (often Portainer). Current builds use a Unix socket for PHP-FPM instead.
 
 ## Support
 
