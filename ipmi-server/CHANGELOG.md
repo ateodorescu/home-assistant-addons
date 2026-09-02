@@ -1,3 +1,9 @@
+## 2.7.6
+
+- Redirect browser visits to `GET /` without `host` to `/ui` (fixes standalone `:9595` showing "No hostname provided!" JSON instead of the Web UI) ([#43](https://github.com/ateodorescu/home-assistant-addons/issues/43))
+- Disable PHP-FPM/ipmitool core dumps and keep process cwd out of `public/` so crashes cannot fill the container with `core.*` files ([#44](https://github.com/ateodorescu/home-assistant-addons/issues/44))
+- Clarify standalone README: open `/ui` for the Web UI; `/` is the JSON API
+
 ## 2.7.5
 
 - Drop `host_network`: outbound IPMI to LAN BMCs works from the container network (same as `ipmi-server-standalone`); restores normal `80/tcp → 9595` port mapping and standard Ingress on container port 8099, fixing host port collisions with other add-ons ([#43](https://github.com/ateodorescu/home-assistant-addons/issues/43))

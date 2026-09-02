@@ -29,12 +29,12 @@ From the UI you can:
 
 ### Connection tips
 
-| Setting        | Recommendation                                                                                  |
-| -------------- | ----------------------------------------------------------------------------------------------- |
-| Interface      | Prefer **`lanplus`** (IPMI 2.0). Auto detect tries several interfaces and can be slower.        |
-| Privilege      | Use **ADMINISTRATOR** if your BMC user requires it.                                             |
+| Setting        | Recommendation                                                                                                                |
+| -------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| Interface      | Prefer **`lanplus`** (IPMI 2.0). Auto detect tries several interfaces and can be slower.                                      |
+| Privilege      | Use **ADMINISTRATOR** if your BMC user requires it.                                                                           |
 | Extra params   | Additional `ipmitool` flags, saved with the profile. Some BMCs need an explicit cipher suite (common on Super Micro: `-C 3`). |
-| Firewall / ACL | Allow the **Home Assistant host IP** on the BMC’s IP access list. Your laptop IP is not enough. |
+| Firewall / ACL | Allow the **Home Assistant host IP** on the BMC’s IP access list. Your laptop IP is not enough.                               |
 
 Passwords are only sent to this add-on. They are anonymized as `####` in logs and error/debug output.
 
@@ -71,7 +71,8 @@ URL-encode spaces and special characters in `params`. Responses are JSON (`succe
 ## Troubleshooting
 
 - **Integration falls back to RMCP / connection refused on `:9595`**: confirm the add-on is **started**. From Core, use `http://localhost` or the HA host LAN IP with port **9595** (not `172.30.0.x` Core container IPs, and not port 80). Prefer **Open Web UI** (Ingress) for browser access.
-- **Web UI in browser at `:9595`**: use **`http://`**, not `https://` (the add-on serves plain HTTP). Open **`/ui`** for the sensor form; **`/`** is the JSON API and needs BMC query parameters.
+- **Web UI in browser at `:9595`**: use **`http://`**, not `https://` (the add-on serves plain HTTP). Open **`/ui`** for the sensor form (browsers hitting **`/`** without BMC params are redirected there). **`/`** with `?host=...` remains the JSON API.
+- **Standalone image**: same URLs — `http://HOST:9595/ui` for the Web UI. Port mapping should be `9595:80`.
 - **`bind() to 0.0.0.0:8099 failed (Address in use)`** in the log (add-on **2.5.0–2.7.4** with `host_network`): host port 8099 collided with another service; update to **2.7.5+**, which uses bridge networking and keeps Ingress on container port 8099 only.
 - **504 Gateway Timeout** under Ingress: the BMC call took too long (wrong interface, unreachable host, or auto-detect trying many types). Prefer a fixed `lanplus` interface.
 - **Unable to establish IPMI v2 / RMCP+ session**: check username/password, privilege, cipher suite (`-C 3` / `-C 17`), and that the BMC allows the Home Assistant host IP.

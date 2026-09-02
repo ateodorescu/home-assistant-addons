@@ -22,5 +22,8 @@ rm -rf /app/var/cache/*
 # Drop a stale socket left behind after a crash so FPM can bind again.
 rm -f /run/php-fpm.sock
 
+# Avoid filling the container with core dumps (e.g. under /app/public).
+ulimit -c 0
+
 #/usr/sbin/php-fpm* -F
 exec php-fpm84 --nodaemonize

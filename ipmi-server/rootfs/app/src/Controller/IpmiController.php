@@ -10,7 +10,10 @@ namespace App\Controller;
 
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\JsonResponse;
+use Symfony\Component\HttpFoundation\RedirectResponse;
+use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Process\Process;
+
 class IpmiController
 {
     private array $ipmiTypes = ["lanplus", "lan", "imb", "open"];
@@ -35,7 +38,7 @@ class IpmiController
     public const PASSWORD_HEADER = 'X-Ipmi-Password';
     public const KG_KEY_HEADER = 'X-Ipmi-Kg-Key';
     public const API_VERSION = 1;
-    public const ADDON_VERSION = '2.7.5';
+    public const ADDON_VERSION = '2.7.6';
     public const CAPABILITY_RESILIENT_POLL = 'resilient_poll';
     public const CAPABILITY_SENSOR_TYPES_FILTER = 'sensor_types_filter';
     public const CAPABILITY_STATUSES = 'statuses';
@@ -52,8 +55,20 @@ class IpmiController
         return new JsonResponse($this->apiMetadata());
     }
 
-    public function index(Request $request): JsonResponse
+    public function index(Request $request): Response
     {
+        // Browsers opening http://host:9595/ expect the Web UI; keep JSON for API clients.
+        if ($this->shouldRedirectRootToUi($request)) {
+            return new RedirectResponse('/ui');
+        }
+
+        if (empty($request->query->get('host'))) {
+            return $this->finalizeJsonResponse([
+                'success' => false,
+                'message' => 'No hostname provided! Open /ui for the web UI, or pass ?host=... for the JSON API.',
+            ]);
+        }
+
         $this->hydrateSecrets($request);
         $requestedTypes = $this->parseRequestedSensorTypes($request);
         $info = $this->getDeviceInfo($request, $requestedTypes);
@@ -175,6 +190,21 @@ class IpmiController
         }
 
         return new JsonResponse($payload);
+    }
+
+    /**
+     * Standalone / direct :9595 visits hit GET / with Accept: text/html and no host.
+     * Redirect those to /ui; leave JSON API clients (curl, HA integration) alone.
+     */
+    private function shouldRedirectRootToUi(Request $request): bool
+    {
+        if (!empty($request->query->get('host'))) {
+            return false;
+        }
+
+        $accept = (string) $request->headers->get('Accept', '');
+
+        return str_contains($accept, 'text/html');
     }
 
     /**
@@ -499,6 +529,8 @@ class IpmiController
         try {
             $proc = new Process($command);
             $proc->setTimeout(self::COMMAND_TIMEOUT);
+            // Keep any crash dumps out of the nginx document root (public/).
+            $proc->setWorkingDirectory(sys_get_temp_dir());
             $opensslConf = '/etc/ssl/ipmitool-openssl.cnf';
             $env = [];
             if (is_readable($opensslConf)) {
@@ -541,7 +573,7 @@ class IpmiController
         $host = $query->get('host');
 
         if (empty($host)) {
-            $message = 'No hostname provided!';
+            $message = 'No hostname provided! Open /ui for the web UI, or pass ?host=... for the JSON API.';
             $this->debug[] = $message;
             error_log($message);
 
@@ -628,7 +660,9 @@ class IpmiController
         $error = 'Wrong connection data provided!';
 
         if ($cmd === false) {
-            $response['message'] = $error;
+            $response['message'] = empty($request->query->get('host'))
+                ? 'No hostname provided! Open /ui for the web UI, or pass ?host=... for the JSON API.'
+                : $error;
         }
         else {
             try {
