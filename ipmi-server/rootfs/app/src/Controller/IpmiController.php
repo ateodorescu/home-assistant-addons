@@ -42,12 +42,28 @@ class IpmiController
     public const CAPABILITY_RESILIENT_POLL = 'resilient_poll';
     public const CAPABILITY_SENSOR_TYPES_FILTER = 'sensor_types_filter';
     public const CAPABILITY_STATUSES = 'statuses';
+    public const CAPABILITY_SDR_FALLBACK_BY_TYPE = 'sdr_fallback_by_type';
 
     /** @var list<string> */
     private const API_CAPABILITIES = [
         self::CAPABILITY_RESILIENT_POLL,
         self::CAPABILITY_SENSOR_TYPES_FILTER,
         self::CAPABILITY_STATUSES,
+        self::CAPABILITY_SDR_FALLBACK_BY_TYPE,
+    ];
+
+    /**
+     * Safe ipmitool `sdr type` queries for integration buckets.
+     * Never include Memory — known to segfault some Intel BMCs (M50CYP).
+     *
+     * @var array<string, array{ipmi_type: string, unit: string}>
+     */
+    private const SDR_TYPE_FALLBACK_MAP = [
+        'temperature' => ['ipmi_type' => 'Temperature', 'unit' => 'degrees C'],
+        'fan' => ['ipmi_type' => 'Fan', 'unit' => 'RPM'],
+        'voltage' => ['ipmi_type' => 'Voltage', 'unit' => 'Volts'],
+        'current' => ['ipmi_type' => 'Current', 'unit' => 'Amps'],
+        'power' => ['ipmi_type' => 'Power Supply', 'unit' => 'Watts'],
     ];
 
     public function meta(): JsonResponse
@@ -842,51 +858,154 @@ class IpmiController
         ?array $requestedTypes = null
     ): bool
     {
-        $ret = $this->runCommand(array_merge($cmd, ['-I', $interface, 'sdr', 'list', 'full']), true);
+        // Non-empty sensor_types: skip full list and query matching sdr types only
+        // (faster/safer on BMCs that segfault on `sdr list full`).
+        $skipFullList = $requestedTypes !== null && count($requestedTypes) > 0;
 
-        if ($ret) {
-            $lines = explode(PHP_EOL, $ret);
+        if (!$skipFullList) {
+            $ret = $this->runCommand(array_merge($cmd, ['-I', $interface, 'sdr', 'list', 'full']), true);
 
-            if (!empty($lines)) {
-                foreach ($lines as $line) {
-                    if (!empty($line)) {
-                        $values = array_map('trim', explode('|', $line));
+            if ($ret !== false && trim($ret) !== '') {
+                $this->parseSdrListFullOutput($ret, $sensorData, $states, $statuses, $requestedTypes);
 
-                        if (count($values) < 3 || !$this->hasUsableSensorReading($values[1])) {
-                            continue;
-                        }
+                return true;
+            }
 
-                        $description = $values[0];
-                        $id = $this->generateId($description);
-                        $value = $values[1];
-                        $status = $values[2];
+            $this->debug[] = 'sdr list full failed or empty; falling back to per-type SDR queries'
+                . ' (capability: ' . self::CAPABILITY_SDR_FALLBACK_BY_TYPE . ')';
+        } else {
+            $this->debug[] = 'sensor_types filter set; using per-type SDR queries'
+                . ' (capability: ' . self::CAPABILITY_SDR_FALLBACK_BY_TYPE . ')';
+        }
 
-                        foreach($this->unitsOfMeasure as $uom => $type) {
-                            if (!$this->shouldIncludeSensorType($requestedTypes, $type)) {
-                                continue;
-                            }
+        return $this->extractFromSdrTypeFallback(
+            $cmd,
+            $interface,
+            $sensorData,
+            $states,
+            $statuses,
+            $requestedTypes
+        );
+    }
 
-                            if (str_contains($value, $uom)) {
-                                $value = trim(str_replace($uom, '', $value));
+    /**
+     * Parse `sdr list full` pipe-delimited lines into sensors/states/statuses.
+     */
+    private function parseSdrListFullOutput(
+        string $output,
+        array &$sensorData,
+        array &$states,
+        array &$statuses,
+        ?array $requestedTypes = null
+    ): void {
+        $lines = explode(PHP_EOL, $output);
 
-                                $id_pattern = "/^".$id."/";
-                                $id_count = count($this->preg_array_key_exists($id_pattern, $sensorData[$type]));
-                                if ($id_count > 0) {
-                                    $description .= ' ' . ($id_count + 1);
-                                    $id = $this->generateId($description);
-                                }
+        foreach ($lines as $line) {
+            if ($line === '') {
+                continue;
+            }
 
-                                $sensorData[$type][$id] = $description;
-                                $states[$id] = $value;
-                                $statuses[$id] = $status;
-                            }
-                        }
-                    }
+            $values = array_map('trim', explode('|', $line));
+
+            if (count($values) < 3 || !$this->hasUsableSensorReading($values[1])) {
+                continue;
+            }
+
+            $description = $values[0];
+            $id = $this->generateId($description);
+            $value = $values[1];
+            $status = $values[2];
+
+            foreach ($this->unitsOfMeasure as $uom => $type) {
+                if (!$this->shouldIncludeSensorType($requestedTypes, $type)) {
+                    continue;
+                }
+
+                if (str_contains($value, $uom)) {
+                    $parsedValue = trim(str_replace($uom, '', $value));
+                    $this->storeSensorReading(
+                        $sensorData,
+                        $states,
+                        $statuses,
+                        $type,
+                        $description,
+                        $id,
+                        $parsedValue,
+                        $status
+                    );
+                    break;
                 }
             }
         }
+    }
 
-        return $ret !== false;
+    /**
+     * Fall back to per-type `sdr type` queries for safe integration buckets.
+     * Never queries Memory (segfault on some Intel BMCs; home-assistant-ipmi#96).
+     *
+     * @param list<string>|null $requestedTypes
+     */
+    private function extractFromSdrTypeFallback(
+        array $cmd,
+        string $interface,
+        array &$sensorData,
+        array &$states,
+        array &$statuses,
+        ?array $requestedTypes = null
+    ): bool {
+        $anyUsable = false;
+
+        foreach (self::SDR_TYPE_FALLBACK_MAP as $bucket => $meta) {
+            if (!$this->shouldIncludeSensorType($requestedTypes, $bucket)) {
+                continue;
+            }
+
+            if ($this->getSensorsByType(
+                $cmd,
+                $interface,
+                $meta['ipmi_type'],
+                $meta['unit'],
+                $bucket,
+                $sensorData,
+                $states,
+                $statuses
+            )) {
+                $anyUsable = true;
+            }
+        }
+
+        return $anyUsable;
+    }
+
+    /**
+     * Store one sensor reading, disambiguating duplicate ids within a bucket.
+     */
+    private function storeSensorReading(
+        array &$sensorData,
+        array &$states,
+        array &$statuses,
+        string $type,
+        string $description,
+        string $id,
+        string $value,
+        ?string $status
+    ): void {
+        if (!isset($sensorData[$type])) {
+            $sensorData[$type] = [];
+        }
+
+        $id_pattern = '/^' . preg_quote($id, '/') . '/';
+        $id_count = count($this->preg_array_key_exists($id_pattern, $sensorData[$type]));
+        if ($id_count > 0) {
+            $description .= ' ' . ($id_count + 1);
+            $id = $this->generateId($description);
+        }
+
+        $sensorData[$type][$id] = $description;
+        $states[$id] = $value;
+        if ($status !== null) {
+            $statuses[$id] = $status;
+        }
     }
 
     private function extractFromDcmiPowerReadingCommand(
@@ -946,52 +1065,81 @@ class IpmiController
         }
     }
 
-    private function getSensorsByType(Request $request, string $type, string $unit): array
-    {
-        $sensors = [];
-        $states = [];
+    /**
+     * Query one ipmitool SDR type on a fixed interface and merge into buckets.
+     *
+     * Typical `sdr type` line (5 columns):
+     *   name | hex | status | entity | value units
+     *
+     * @return bool true when at least one usable reading was stored
+     */
+    private function getSensorsByType(
+        array $cmd,
+        string $interface,
+        string $ipmiSdrType,
+        string $unit,
+        string $bucketType,
+        array &$sensorData,
+        array &$states,
+        array &$statuses
+    ): bool {
+        $ret = $this->runCommand(
+            array_merge($cmd, ['-I', $interface, 'sdr', 'type', $ipmiSdrType]),
+            true
+        );
 
-        $cmd = $this->getCommand($request);
-        $found = false;
-
-        if ($cmd !== false) {
-            foreach ($this->ipmiTypes as $ipmi_type) {
-                $ret = $this->runCommand(array_merge($cmd, ['-I', $ipmi_type, 'sdr', 'type', $type]));
-
-                if ($ret) {
-                    $results = explode(PHP_EOL, $ret);
-
-                    if (!empty($results)) {
-                        foreach ($results as $result) {
-                            if (!empty($result)) {
-                                $values = array_map('trim', explode('|', $result));
-                                [$description, $a, $b, $c, $value] = $values;
-                                $id = $this->generateId($description);
-
-                                if (str_contains($value, $unit)) {
-                                    $value = trim(str_replace($unit, '', $value));
-                                } else {
-                                    $value = null;
-                                }
-
-                                $sensors[$id] = $description;
-                                $states[$id] = $value;
-                            }
-                        }
-
-                        $found = true;
-                        break;
-                    }
-                }
-            }
+        if ($ret === false || trim($ret) === '') {
+            return false;
         }
 
-        return [
-            'found' => $found,
-            'sensors' => $sensors,
-            'states' => $states
-        ];
+        $anyUsable = false;
+        $lines = explode(PHP_EOL, $ret);
+
+        foreach ($lines as $line) {
+            if ($line === '') {
+                continue;
+            }
+
+            $values = array_map('trim', explode('|', $line));
+            $description = $values[0] ?? '';
+            if ($description === '') {
+                continue;
+            }
+
+            // Prefer 5-column `sdr type` layout; fall back to last column as reading.
+            $status = $values[2] ?? null;
+            $readingRaw = $values[4] ?? ($values[count($values) - 1] ?? '');
+
+            if (!$this->hasUsableSensorReading((string) $readingRaw)) {
+                continue;
+            }
+
+            if ($unit !== '' && !str_contains((string) $readingRaw, $unit)) {
+                continue;
+            }
+
+            $value = $unit !== ''
+                ? trim(str_replace($unit, '', (string) $readingRaw))
+                : trim((string) $readingRaw);
+
+            if (!$this->hasUsableSensorReading($value)) {
+                continue;
+            }
+
+            $id = $this->generateId($description);
+            $this->storeSensorReading(
+                $sensorData,
+                $states,
+                $statuses,
+                $bucketType,
+                $description,
+                $id,
+                $value,
+                is_string($status) ? $status : null
+            );
+            $anyUsable = true;
+        }
+
+        return $anyUsable;
     }
-
-
 }

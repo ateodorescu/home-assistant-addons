@@ -29,14 +29,22 @@ From the UI you can:
 
 ### Connection tips
 
-| Setting        | Recommendation                                                                                                                |
-| -------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| Interface      | Prefer **`lanplus`** (IPMI 2.0). Auto detect tries several interfaces and can be slower.                                      |
-| Privilege      | Use **ADMINISTRATOR** if your BMC user requires it.                                                                           |
-| Extra params   | Additional `ipmitool` flags, saved with the profile. Some BMCs need an explicit cipher suite (common on Super Micro: `-C 3`). |
-| Firewall / ACL | Allow the **Home Assistant host IP** on the BMC’s IP access list. Your laptop IP is not enough.                               |
+| Setting        | Recommendation                                                                                                                                      |
+| -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Interface      | Prefer **`lanplus`** (IPMI 2.0). Auto detect tries several interfaces and can be slower.                                                            |
+| Privilege      | Use **ADMINISTRATOR** if your BMC user requires it.                                                                                                 |
+| Extra params   | Additional `ipmitool` flags, saved with the profile. Some BMCs need an explicit cipher suite (common on Super Micro and some Intel boards: `-C 3`). |
+| Firewall / ACL | Allow the **Home Assistant host IP** on the BMC’s IP access list. Your laptop IP is not enough.                                                     |
 
 Passwords are only sent to this add-on. They are anonymized as `####` in logs and error/debug output.
+
+### Sensor discovery (`sdr list full` fallback)
+
+By default the add-on still runs `ipmitool … sdr list full` (same as older releases). On some BMCs — notably certain Intel M50CYP boards with ipmitool 1.8.19 — that command can segfault (signal 11), including when iterating Memory SDR records.
+
+When `sdr list full` fails or returns empty, the add-on falls back to safer per-type queries (`sdr type Temperature`, `Fan`, `Voltage`, `Current`, `Power Supply`). It does **not** query `sdr type Memory`. Responses keep the same `sensors` / `states` / `statuses` JSON shape; the additive capability `sdr_fallback_by_type` is advertised when present.
+
+Optional BMC-side workaround reported for M50CYP: enable Channel 3 / cipher suite 3 under RMCP+ settings, and/or set Extra params to `-C 3` on the connection profile.
 
 ## HTTP API
 
@@ -76,6 +84,7 @@ URL-encode spaces and special characters in `params`. Responses are JSON (`succe
 - **`bind() to 0.0.0.0:8099 failed (Address in use)`** in the log (add-on **2.5.0–2.7.4** with `host_network`): host port 8099 collided with another service; update to **2.7.5+**, which uses bridge networking and keeps Ingress on container port 8099 only.
 - **504 Gateway Timeout** under Ingress: the BMC call took too long (wrong interface, unreachable host, or auto-detect trying many types). Prefer a fixed `lanplus` interface.
 - **Unable to establish IPMI v2 / RMCP+ session**: check username/password, privilege, cipher suite (`-C 3` / `-C 17`), and that the BMC allows the Home Assistant host IP.
+- **`sdr list full` / signal 11 on Intel M50CYP**: the add-on falls back to per-type SDR queries automatically. You can also enable Channel 3 / cipher suite 3 in the BMC RMCP+ settings and set Extra params to `-C 3` ([home-assistant-ipmi#96](https://github.com/ateodorescu/home-assistant-ipmi/issues/96)).
 - **Works from a laptop but not the add-on**: almost always BMC IP access control or firewall — allow the HA host address.
 - **`unable to bind listening socket for address '127.0.0.1:9000'`** (older builds): host-network PHP-FPM collided with another service on TCP 9000 (often Portainer). Current builds use a Unix socket for PHP-FPM instead.
 
