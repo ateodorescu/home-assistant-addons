@@ -1,3 +1,9 @@
+## 2.7.7
+
+- Security: bump pinned Alpine `php84*` packages to `8.4.28-r0` to pick up the PHP2Shell fixes (CVE-2026-109618, CVE-2026-109619) ([#46](https://github.com/ateodorescu/home-assistant-addons/issues/46))
+- Pin the standalone image to `php:8.4.28-fpm-alpine` so rebuilds can no longer silently use an older PHP 8.4 patch release
+- Bump pinned `nginx` to `1.30.8-r0` and `libcrypto3`/`libssl3`/`openssl-dev` to `3.5.9-r1` (Alpine 3.24 repos dropped `1.30.4-r1` and `3.5.8-r0`, which would otherwise break the add-on build)
+
 ## 2.7.6
 
 - Redirect browser visits to `GET /` without `host` to `/ui` (fixes standalone `:9595` showing "No hostname provided!" JSON instead of the Web UI) ([#43](https://github.com/ateodorescu/home-assistant-addons/issues/43))

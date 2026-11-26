@@ -2,7 +2,7 @@
 FROM composer:2.8.5 AS composer_stage
 
 # 2. Start your main PHP image
-FROM php:8.4-fpm-alpine
+FROM php:8.4.28-fpm-alpine
 
 # 3. Build ipmitool from source (match add-on).
 # Do NOT use --enable-internal-md5: that disables the lanplus (RMCP+) interface.

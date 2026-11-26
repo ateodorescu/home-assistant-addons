@@ -26,8 +26,8 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 # hadolint ignore=DL3003,DL3018
 RUN apk update && \
     apk add --no-cache \
-        libcrypto3=3.5.8-r0 \
-        libssl3=3.5.8-r0 \
+        libcrypto3=3.5.9-r1 \
+        libssl3=3.5.9-r1 \
         readline \
         ncurses \
         libgcc && \
@@ -36,7 +36,7 @@ RUN apk update && \
         automake \
         autoconf \
         libtool \
-        openssl-dev=3.5.8-r0 \
+        openssl-dev=3.5.9-r1 \
         readline-dev \
         ncurses-dev \
         curl \
@@ -69,16 +69,16 @@ RUN apk update && \
 
 # hadolint ignore=DL3018
 RUN apk add --no-cache \
-        nginx=1.30.4-r1 \
-        php84=8.4.25-r0 \
-        php84-fpm=8.4.25-r0 \
-        php84-openssl=8.4.25-r0 \
-        php84-ctype=8.4.25-r0 \
-        php84-session=8.4.25-r0 \
-        php84-tokenizer=8.4.25-r0 \
-        php84-opcache=8.4.25-r0 \
-        php84-iconv=8.4.25-r0 \
-        php84-xml=8.4.25-r0 && \
+        nginx=1.30.8-r0 \
+        php84=8.4.28-r0 \
+        php84-fpm=8.4.28-r0 \
+        php84-openssl=8.4.28-r0 \
+        php84-ctype=8.4.28-r0 \
+        php84-session=8.4.28-r0 \
+        php84-tokenizer=8.4.28-r0 \
+        php84-opcache=8.4.28-r0 \
+        php84-iconv=8.4.28-r0 \
+        php84-xml=8.4.28-r0 && \
     mkdir -p /app/cache /app/var/cache/prod /app/var/log /var/tmp/nginx && \
     chmod -R 777 /app/var/
 
@@ -94,8 +94,8 @@ COPY --from=composer_stage /usr/bin/composer /usr/bin/composer
 # Install app dependencies and clean up
 # hadolint ignore=DL3018
 RUN apk add --no-cache \
-        php84-phar=8.4.25-r0 \
-        php84-mbstring=8.4.25-r0 && \
+        php84-phar=8.4.28-r0 \
+        php84-mbstring=8.4.28-r0 && \
     php84 /usr/bin/composer --working-dir /app install && \
     rm -rf /app/var/cache/* && \
     apk del \
