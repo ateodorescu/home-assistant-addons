@@ -1,4 +1,4 @@
-## Unreleased
+## 2.7.8
 
 - Standalone image: turn off the nginx access log so request URLs (which may carry `password` / `kg_key` query params from older clients) are never written to disk. The add-on already had access logs off ([home-assistant-ipmi#90](https://github.com/ateodorescu/home-assistant-ipmi/issues/90))
 - Docs: recommend the `X-Ipmi-Password` / `X-Ipmi-Kg-Key` headers over query parameters for secrets
