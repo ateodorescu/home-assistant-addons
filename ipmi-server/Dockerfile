@@ -26,6 +26,7 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 # hadolint ignore=DL3003,DL3018
 RUN apk update && \
     apk add --no-cache \
+        musl=1.2.6-r3 \
         libcrypto3=3.5.9-r1 \
         libssl3=3.5.9-r1 \
         readline \
