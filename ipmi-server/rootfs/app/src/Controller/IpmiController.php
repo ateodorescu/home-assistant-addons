@@ -13,6 +13,7 @@ use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\RedirectResponse;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Process\Process;
+use Symfony\Component\Process\Exception\ProcessSignaledException;
 
 class IpmiController
 {
@@ -32,6 +33,9 @@ class IpmiController
     private array $debug = [];
     private string $password = '';
     private string $kgKey = '';
+    // True when the most recent ipmitool process crashed (e.g. SIGSEGV), as opposed
+    // to failing cleanly (bad credentials, wrong interface, unreachable host).
+    private bool $lastCommandCrashed = false;
     // Hard ceiling per ipmitool invoke. Keep below nginx/php-fpm (120s).
     const COMMAND_TIMEOUT = 45;
     const DEFAULT_PORT = 623;
@@ -42,12 +46,28 @@ class IpmiController
     public const CAPABILITY_RESILIENT_POLL = 'resilient_poll';
     public const CAPABILITY_SENSOR_TYPES_FILTER = 'sensor_types_filter';
     public const CAPABILITY_STATUSES = 'statuses';
+    public const CAPABILITY_SDR_FALLBACK_BY_TYPE = 'sdr_fallback_by_type';
 
     /** @var list<string> */
     private const API_CAPABILITIES = [
         self::CAPABILITY_RESILIENT_POLL,
         self::CAPABILITY_SENSOR_TYPES_FILTER,
         self::CAPABILITY_STATUSES,
+        self::CAPABILITY_SDR_FALLBACK_BY_TYPE,
+    ];
+
+    /**
+     * Safe ipmitool `sdr type` queries for integration buckets.
+     * Never include Memory — known to segfault some Intel BMCs (M50CYP).
+     *
+     * @var array<string, array{ipmi_type: string, unit: string}>
+     */
+    private const SDR_TYPE_FALLBACK_MAP = [
+        'temperature' => ['ipmi_type' => 'Temperature', 'unit' => 'degrees C'],
+        'fan' => ['ipmi_type' => 'Fan', 'unit' => 'RPM'],
+        'voltage' => ['ipmi_type' => 'Voltage', 'unit' => 'Volts'],
+        'current' => ['ipmi_type' => 'Current', 'unit' => 'Amps'],
+        'power' => ['ipmi_type' => 'Power Supply', 'unit' => 'Watts'],
     ];
 
     public function meta(): JsonResponse
@@ -499,6 +519,11 @@ class IpmiController
             return $result;
         }
 
+        // A crash is not a cipher-suite problem; retrying would just crash again.
+        if ($this->lastCommandCrashed) {
+            return false;
+        }
+
         // Super Micro / OpenSSL 3: try common RMCP+ cipher suites when default fails.
         // Suite 17 is modern but often unsupported; 3/8/12 are common on older BMCs.
         if (\in_array('lanplus', $command, true) && !\in_array('-C', $command, true)) {
@@ -525,6 +550,7 @@ class IpmiController
     private function executeIpmiCommand(array $command, bool $ignoreErrors = false): bool|string
     {
         $errorIntro = "Error occurred when running \"" . implode(" ", array_map($this->anonymizeSecrets(...), $command)) . "\".\n" ;
+        $this->lastCommandCrashed = false;
 
         try {
             $proc = new Process($command);
@@ -541,6 +567,9 @@ class IpmiController
             $exitCode = $proc->getExitCode();
 
             if ($exitCode) {
+                // 128 + SIGSEGV(11) / SIGABRT(6) / SIGBUS(7) / SIGILL(4) / SIGFPE(8)
+                $this->lastCommandCrashed = $proc->hasBeenSignaled()
+                    || \in_array($exitCode, [132, 134, 135, 136, 139], true);
                 $message = $this->anonymizeSecrets($errorIntro.$proc->getErrorOutput());
                 $this->debug[] = $message;
 
@@ -552,6 +581,9 @@ class IpmiController
             }
         }
         catch (\Exception $exception) {
+            // Symfony Process throws when ipmitool dies from a signal (e.g. SIGSEGV).
+            $this->lastCommandCrashed = $exception instanceof ProcessSignaledException;
+
             // let's log this error
             $message = $this->anonymizeSecrets($errorIntro . $exception->getMessage());
             $this->debug[] = $message;
@@ -844,49 +876,153 @@ class IpmiController
     {
         $ret = $this->runCommand(array_merge($cmd, ['-I', $interface, 'sdr', 'list', 'full']), true);
 
-        if ($ret) {
-            $lines = explode(PHP_EOL, $ret);
+        if ($ret !== false && trim($ret) !== '') {
+            $this->parseSdrListFullOutput($ret, $sensorData, $states, $statuses, $requestedTypes);
 
-            if (!empty($lines)) {
-                foreach ($lines as $line) {
-                    if (!empty($line)) {
-                        $values = array_map('trim', explode('|', $line));
+            return true;
+        }
 
-                        if (count($values) < 3 || !$this->hasUsableSensorReading($values[1])) {
-                            continue;
-                        }
+        // Only fall back when the BMC session demonstrably works (ipmitool crashed
+        // mid-listing, or succeeded with no output). A clean failure means wrong
+        // interface / credentials / host, so fail fast and let auto-detect move on.
+        if ($ret === false && !$this->lastCommandCrashed) {
+            return false;
+        }
 
-                        $description = $values[0];
-                        $id = $this->generateId($description);
-                        $value = $values[1];
-                        $status = $values[2];
+        $this->debug[] = ($ret === false ? 'sdr list full crashed' : 'sdr list full returned no output')
+            . '; falling back to per-type SDR queries'
+            . ' (capability: ' . self::CAPABILITY_SDR_FALLBACK_BY_TYPE . ')';
 
-                        foreach($this->unitsOfMeasure as $uom => $type) {
-                            if (!$this->shouldIncludeSensorType($requestedTypes, $type)) {
-                                continue;
-                            }
+        return $this->extractFromSdrTypeFallback(
+            $cmd,
+            $interface,
+            $sensorData,
+            $states,
+            $statuses,
+            $requestedTypes
+        );
+    }
 
-                            if (str_contains($value, $uom)) {
-                                $value = trim(str_replace($uom, '', $value));
+    /**
+     * Parse `sdr list full` pipe-delimited lines into sensors/states/statuses.
+     */
+    private function parseSdrListFullOutput(
+        string $output,
+        array &$sensorData,
+        array &$states,
+        array &$statuses,
+        ?array $requestedTypes = null
+    ): void {
+        $lines = explode(PHP_EOL, $output);
 
-                                $id_pattern = "/^".$id."/";
-                                $id_count = count($this->preg_array_key_exists($id_pattern, $sensorData[$type]));
-                                if ($id_count > 0) {
-                                    $description .= ' ' . ($id_count + 1);
-                                    $id = $this->generateId($description);
-                                }
+        foreach ($lines as $line) {
+            if ($line === '') {
+                continue;
+            }
 
-                                $sensorData[$type][$id] = $description;
-                                $states[$id] = $value;
-                                $statuses[$id] = $status;
-                            }
-                        }
-                    }
+            $values = array_map('trim', explode('|', $line));
+
+            if (count($values) < 3 || !$this->hasUsableSensorReading($values[1])) {
+                continue;
+            }
+
+            $description = $values[0];
+            $id = $this->generateId($description);
+            $value = $values[1];
+            $status = $values[2];
+
+            foreach ($this->unitsOfMeasure as $uom => $type) {
+                if (!$this->shouldIncludeSensorType($requestedTypes, $type)) {
+                    continue;
+                }
+
+                if (str_contains($value, $uom)) {
+                    $parsedValue = trim(str_replace($uom, '', $value));
+                    $this->storeSensorReading(
+                        $sensorData,
+                        $states,
+                        $statuses,
+                        $type,
+                        $description,
+                        $id,
+                        $parsedValue,
+                        $status
+                    );
+                    break;
                 }
             }
         }
+    }
 
-        return $ret !== false;
+    /**
+     * Fall back to per-type `sdr type` queries for safe integration buckets.
+     * Never queries Memory (segfault on some Intel BMCs; home-assistant-ipmi#96).
+     *
+     * @param list<string>|null $requestedTypes
+     */
+    private function extractFromSdrTypeFallback(
+        array $cmd,
+        string $interface,
+        array &$sensorData,
+        array &$states,
+        array &$statuses,
+        ?array $requestedTypes = null
+    ): bool {
+        // Succeed when at least one per-type query ran cleanly, even if that type
+        // has no readings (a BMC without Current sensors is not a failed poll).
+        $anyOk = false;
+
+        foreach (self::SDR_TYPE_FALLBACK_MAP as $bucket => $meta) {
+            if (!$this->shouldIncludeSensorType($requestedTypes, $bucket)) {
+                continue;
+            }
+
+            if ($this->getSensorsByType(
+                $cmd,
+                $interface,
+                $meta['ipmi_type'],
+                $meta['unit'],
+                $bucket,
+                $sensorData,
+                $states,
+                $statuses
+            )) {
+                $anyOk = true;
+            }
+        }
+
+        return $anyOk;
+    }
+
+    /**
+     * Store one sensor reading, disambiguating duplicate ids within a bucket.
+     */
+    private function storeSensorReading(
+        array &$sensorData,
+        array &$states,
+        array &$statuses,
+        string $type,
+        string $description,
+        string $id,
+        string $value,
+        ?string $status
+    ): void {
+        if (!isset($sensorData[$type])) {
+            $sensorData[$type] = [];
+        }
+
+        $id_pattern = '/^' . preg_quote($id, '/') . '/';
+        $id_count = count($this->preg_array_key_exists($id_pattern, $sensorData[$type]));
+        if ($id_count > 0) {
+            $description .= ' ' . ($id_count + 1);
+            $id = $this->generateId($description);
+        }
+
+        $sensorData[$type][$id] = $description;
+        $states[$id] = $value;
+        if ($status !== null) {
+            $statuses[$id] = $status;
+        }
     }
 
     private function extractFromDcmiPowerReadingCommand(
@@ -946,52 +1082,79 @@ class IpmiController
         }
     }
 
-    private function getSensorsByType(Request $request, string $type, string $unit): array
-    {
-        $sensors = [];
-        $states = [];
+    /**
+     * Query one ipmitool SDR type on a fixed interface and merge into buckets.
+     *
+     * Typical `sdr type` line (5 columns):
+     *   name | hex | status | entity | value units
+     *
+     * @return bool true when the ipmitool query succeeded (readings may be empty)
+     */
+    private function getSensorsByType(
+        array $cmd,
+        string $interface,
+        string $ipmiSdrType,
+        string $unit,
+        string $bucketType,
+        array &$sensorData,
+        array &$states,
+        array &$statuses
+    ): bool {
+        $ret = $this->runCommand(
+            array_merge($cmd, ['-I', $interface, 'sdr', 'type', $ipmiSdrType]),
+            true
+        );
 
-        $cmd = $this->getCommand($request);
-        $found = false;
-
-        if ($cmd !== false) {
-            foreach ($this->ipmiTypes as $ipmi_type) {
-                $ret = $this->runCommand(array_merge($cmd, ['-I', $ipmi_type, 'sdr', 'type', $type]));
-
-                if ($ret) {
-                    $results = explode(PHP_EOL, $ret);
-
-                    if (!empty($results)) {
-                        foreach ($results as $result) {
-                            if (!empty($result)) {
-                                $values = array_map('trim', explode('|', $result));
-                                [$description, $a, $b, $c, $value] = $values;
-                                $id = $this->generateId($description);
-
-                                if (str_contains($value, $unit)) {
-                                    $value = trim(str_replace($unit, '', $value));
-                                } else {
-                                    $value = null;
-                                }
-
-                                $sensors[$id] = $description;
-                                $states[$id] = $value;
-                            }
-                        }
-
-                        $found = true;
-                        break;
-                    }
-                }
-            }
+        if ($ret === false) {
+            return false;
         }
 
-        return [
-            'found' => $found,
-            'sensors' => $sensors,
-            'states' => $states
-        ];
+        $lines = explode(PHP_EOL, $ret);
+
+        foreach ($lines as $line) {
+            if ($line === '') {
+                continue;
+            }
+
+            $values = array_map('trim', explode('|', $line));
+            $description = $values[0] ?? '';
+            if ($description === '') {
+                continue;
+            }
+
+            // Prefer 5-column `sdr type` layout; fall back to last column as reading.
+            $status = $values[2] ?? null;
+            $readingRaw = $values[4] ?? ($values[count($values) - 1] ?? '');
+
+            if (!$this->hasUsableSensorReading((string) $readingRaw)) {
+                continue;
+            }
+
+            if ($unit !== '' && !str_contains((string) $readingRaw, $unit)) {
+                continue;
+            }
+
+            $value = $unit !== ''
+                ? trim(str_replace($unit, '', (string) $readingRaw))
+                : trim((string) $readingRaw);
+
+            if (!$this->hasUsableSensorReading($value)) {
+                continue;
+            }
+
+            $id = $this->generateId($description);
+            $this->storeSensorReading(
+                $sensorData,
+                $states,
+                $statuses,
+                $bucketType,
+                $description,
+                $id,
+                $value,
+                is_string($status) ? $status : null
+            );
+        }
+
+        return true;
     }
-
-
 }

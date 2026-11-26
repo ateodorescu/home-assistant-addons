@@ -1,3 +1,11 @@
+## Unreleased
+
+- Fall back to per-type `sdr type` queries (Temperature, Fan, Voltage, Current, Power Supply) when `sdr list full` crashes (e.g. signal 11) or returns no output — fixes Intel M50CYP / ipmitool 1.8.19 crashes ([home-assistant-ipmi#96](https://github.com/ateodorescu/home-assistant-ipmi/issues/96))
+- Never query `sdr type Memory` (known crash trigger on those BMCs)
+- Clean failures (wrong interface, bad credentials, unreachable host) do not trigger the fallback, and a crashed `ipmitool` call is no longer retried with every cipher suite
+- Advertise additive capability `sdr_fallback_by_type`
+- Document BMC Channel 3 / cipher suite 3 workaround and Extra params `-C 3` for RMCP+ session issues
+
 ## 2.7.6
 
 - Redirect browser visits to `GET /` without `host` to `/ui` (fixes standalone `:9595` showing "No hostname provided!" JSON instead of the Web UI) ([#43](https://github.com/ateodorescu/home-assistant-addons/issues/43))
