@@ -1,6 +1,13 @@
 ---
 name: CI
 
+# Local replacement for hassio-addons/workflows addon-ci.yaml.
+# That shared workflow assumes a separate edge repository and fails the
+# app linter unless config.yaml `version` is "dev". This repository ships
+# stable releases straight from `main`, where Home Assistant reads the
+# version, so `main` keeps the released semver and the community-only
+# checks are turned off below.
+
 # yamllint disable-line rule:truthy
 on:
   push:
@@ -11,6 +18,93 @@ on:
       - synchronize
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
-  workflows:
-    uses: hassio-addons/workflows/.github/workflows/addon-ci.yaml@main
+  lint-app:
+    name: Lint App
+    runs-on: ubuntu-latest
+    steps:
+      - name: ⤵️ Check out code from GitHub
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: 🚀 Run app linter
+        uses: frenck/action-app-linter@d51677290aef26cdfc835271dd3c7343ce502809
+        with:
+          community: false
+          path: ./ipmi-server
+
+  hadolint:
+    name: Hadolint
+    runs-on: ubuntu-latest
+    steps:
+      - name: ⤵️ Check out code from GitHub
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: 🚀 Run Hadolint
+        uses: brpaz/hadolint-action@c27bd9edc1e95eed30474db8f295ff5807ebca14
+        with:
+          dockerfile: ./ipmi-server/Dockerfile
+
+  jsonlint:
+    name: JSON Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: ⤵️ Check out code from GitHub
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: 🚀 Run JQ
+        run: |
+          shopt -s globstar nullglob
+          for file in **/*.json; do
+            if ! jq '.' "$file" > /dev/null 2>&1; then
+              echo "::error file=${file}::Invalid JSON in ${file}"
+              jq '.' "$file"
+              exit 1
+            fi
+          done
+
+  prettier:
+    name: Prettier
+    runs-on: ubuntu-latest
+    steps:
+      - name: ⤵️ Check out code from GitHub
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: 🚀 Run Prettier
+        uses: creyD/prettier_action@8c18391fdc98ed0d884c6345f03975edac71b8f0
+        with:
+          prettier_options: --check **/*.{json,js,md,yaml}
+
+  shellcheck:
+    name: Shellcheck
+    runs-on: ubuntu-latest
+    steps:
+      - name: ⤵️ Check out code from GitHub
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: 🚀 Run Shellcheck
+        uses: ludeeus/action-shellcheck@00cae500b08a931fb5698e11e79bfbd38e612a38
+        env:
+          SHELLCHECK_OPTS: -s bash
+        with:
+          additional_files: run healthcheck
+          # services.d/*/finish are execline scripts, not shell.
+          ignore_names: finish
+
+  yamllint:
+    name: YAMLLint
+    runs-on: ubuntu-latest
+    steps:
+      - name: ⤵️ Check out code from GitHub
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: 🚀 Run YAMLLint
+        uses: frenck/action-yamllint@34b4bbcaeabedcfefad6adea8c5bbc42af0e2d47
