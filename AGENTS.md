@@ -38,7 +38,7 @@ If a change cannot be made without breaking existing clients, do not ship it.
 ```
 .
 ├── repository.yaml              # HA add-on repository metadata
-├── RELEASING.md                 # Edge/dev vs stable release process
+├── RELEASING.md                 # Release process
 ├── ipmi-server/
 │   ├── config.yaml              # Add-on version, ports, options, image
 │   ├── Dockerfile               # Multi-stage build; composer install at image build
@@ -138,35 +138,31 @@ There is no test suite checked in yet (`App\Tests\` is reserved in Composer). If
 
 ## CI / release
 
-- CI: `.github/workflows/ci.yaml` → reusable `hassio-addons` addon CI (includes yamllint via `.yamllint`; see **YAML / yamllint / Prettier** above)
-- Deploy add-on: `.github/workflows/deploy.yaml` on release / successful CI on `main`
+- CI: `.github/workflows/ci.yaml` → local lint jobs (app linter with `community: false`, Hadolint, Shellcheck, YAMLLint via `.yamllint`, Prettier, JSON lint). It replaces the shared `hassio-addons` addon CI, whose community linter requires `version: "dev"` and does not fit this single-branch repo.
+- Deploy add-on: `.github/workflows/deploy.yaml` on release (tags `:X.Y.Z` and `:stable`) / successful CI on `main` (tags `:edge` and `:<sha>`)
 - Standalone image: `.github/workflows/docker-standalone.yaml` on `main` and `v*` tags (`linux/amd64` + `linux/arm64`; native ARM runner)
 
 Full workflow: `RELEASING.md`. Agents must follow the **version** rules below.
 
 ### Add-on `version` in `ipmi-server/config.yaml`
 
-This field is **not** rewritten by the Docker/CI build. It is the Supervisor add-on version **and** the image tag source (`:dev`, `:X.Y.Z`, `:latest`).
+Home Assistant Supervisor reads this field from `main`: it is the version shown in the add-on store **and** the image tag it pulls (`<image>:<version>`, see `image:` in `config.yaml`). It is not rewritten by CI.
 
-| When                                              | `version` value                            | Why                                                                    |
-| ------------------------------------------------- | ------------------------------------------ | ---------------------------------------------------------------------- |
-| Normal development on `main`                      | `"dev"`                                    | Edge channel only; addon linter **requires** `"dev"` on non-release CI |
-| Preparing / publishing a release                  | semver, e.g. `"2.5.1"` (beta: `"2.5.1b1"`) | Users get that version; deploy tags `:2.5.1` and `:latest`             |
-| Immediately after the GitHub release is published | back to `"dev"`                            | Keeps `main` green and avoids notifying stable users on every push     |
+`main` always carries the **latest released semver** (e.g. `"2.7.7"`). Never set it to `"dev"`: no `:dev` image is published, so users would be offered a version that cannot be pulled. Pushes to `main` only publish `:edge`/`:<sha>` images and never overwrite a released tag.
 
 **Release checklist (agents):**
 
 1. Update `ipmi-server/CHANGELOG.md` for the release.
-2. Set `version: "X.Y.Z"` in `ipmi-server/config.yaml` **and** update `ADDON_VERSION` in `ipmi-server/rootfs/app/src/Controller/IpmiController.php` to the same semver (exposed in API responses and the web UI).
+2. Set `version: "X.Y.Z"` in `ipmi-server/config.yaml` **and** update `ADDON_VERSION` in `ipmi-server/rootfs/app/src/Controller/IpmiController.php` to the same semver (exposed in API responses and the web UI). Do this in the release commit, not in feature PRs.
 3. Commit and push to `main`.
 4. Publish a GitHub release:
    - **Tag:** `vX.Y.Z` (with a leading `v`, e.g. `v2.6.0` — **not** bare `2.6.0`; must match config semver).
    - **Title:** `home-assistant-addons vX.Y.Z` (e.g. `home-assistant-addons v2.6.0`).
    - **Description:** include the changes for this version (copy from the new `CHANGELOG.md` section).
    - Leave pre-release unchecked for stable releases.
-5. After the release exists, set `version: "dev"` in `config.yaml`, commit, and push to `main`. Leave `IpmiController::ADDON_VERSION` at the released semver (it reflects the last published add-on version while edge builds run on `"dev"`).
+5. Leave `version` at the released semver afterwards. There is no reset step.
 
-Do **not** leave a semver on `main` in `config.yaml` after a release — CI fails with `Add-on version identifier must be 'dev'`. Do **not** invent a different versioning scheme; stick to this edge/`dev` ↔ release/semver cycle. Keep `config.yaml` `version` and `IpmiController::ADDON_VERSION` in sync whenever bumping for a release.
+Keep `config.yaml` `version` and `IpmiController::ADDON_VERSION` in sync whenever bumping for a release.
 
 ## Security & secrets
 
