@@ -39,6 +39,8 @@ Open the add-on and choose **Open Web UI**. Enter BMC connection details (includ
 - run power on / off / cycle / reset / soft shutdown
 - run a custom `ipmitool` command
 
+If `sdr list full` crashes on some BMCs (e.g. certain Intel M50CYP boards), the add-on falls back to per-type SDR queries. A BMC-side workaround is enabling Channel 3 / cipher suite 3 and using Extra params `-C 3`.
+
 ### Custom commands (HTTP API)
 
 You can call any `ipmitool` arguments through `/command`.

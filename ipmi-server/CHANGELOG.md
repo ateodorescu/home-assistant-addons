@@ -3,6 +3,11 @@
 - Security: bump pinned Alpine `php84*` packages to `8.4.28-r0` to pick up the PHP2Shell fixes (CVE-2026-109618, CVE-2026-109619) ([#46](https://github.com/ateodorescu/home-assistant-addons/issues/46))
 - Pin the standalone image to `php:8.4.28-fpm-alpine` so rebuilds can no longer silently use an older PHP 8.4 patch release
 - Bump pinned `nginx` to `1.30.8-r0` and `libcrypto3`/`libssl3`/`openssl-dev` to `3.5.9-r1` (Alpine 3.24 repos dropped `1.30.4-r1` and `3.5.8-r0`, which would otherwise break the add-on build)
+- Fall back to per-type `sdr type` queries (Temperature, Fan, Voltage, Current, Power Supply) when `sdr list full` crashes (e.g. signal 11) or returns no output — fixes Intel M50CYP / ipmitool 1.8.19 crashes ([home-assistant-ipmi#96](https://github.com/ateodorescu/home-assistant-ipmi/issues/96))
+- Never query `sdr type Memory` (known crash trigger on those BMCs)
+- Clean failures (wrong interface, bad credentials, unreachable host) do not trigger the fallback, and a crashed `ipmitool` call is no longer retried with every cipher suite
+- Advertise additive capability `sdr_fallback_by_type`
+- Document BMC Channel 3 / cipher suite 3 workaround and Extra params `-C 3` for RMCP+ session issues
 
 ## 2.7.6
 
