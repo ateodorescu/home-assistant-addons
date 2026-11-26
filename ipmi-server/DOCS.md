@@ -60,7 +60,7 @@ The service is published on host port **9595** (`80/tcp → 9595` inside the con
 
 Common query parameters: `host`, `port` (default `623`), `user`, `password`, `interface`, `kg_key`, `privilege_level`, `extra`.
 
-You can also pass secrets with headers: `X-Ipmi-Password`, `X-Ipmi-Kg-Key`.
+You can also pass secrets with headers: `X-Ipmi-Password`, `X-Ipmi-Kg-Key`. Prefer the headers: query parameters are part of the URL, so a reverse proxy or other web server in front of the add-on may write them to its access log. The headers take precedence when both are sent. The Home Assistant IPMI integration uses the headers automatically.
 
 ### Example custom command
 

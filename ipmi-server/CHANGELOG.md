@@ -1,3 +1,8 @@
+## Unreleased
+
+- Standalone image: turn off the nginx access log so request URLs (which may carry `password` / `kg_key` query params from older clients) are never written to disk. The add-on already had access logs off ([home-assistant-ipmi#90](https://github.com/ateodorescu/home-assistant-ipmi/issues/90))
+- Docs: recommend the `X-Ipmi-Password` / `X-Ipmi-Kg-Key` headers over query parameters for secrets
+
 ## 2.7.7
 
 - Security: bump pinned Alpine `php84*` packages to `8.4.28-r0` to pick up the PHP2Shell fixes (CVE-2026-109618, CVE-2026-109619) ([#46](https://github.com/ateodorescu/home-assistant-addons/issues/46))
