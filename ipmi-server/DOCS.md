@@ -42,7 +42,7 @@ Passwords are only sent to this add-on. They are anonymized as `####` in logs an
 
 By default the add-on still runs `ipmitool … sdr list full` (same as older releases). On some BMCs — notably certain Intel M50CYP boards with ipmitool 1.8.19 — that command can segfault (signal 11), including when iterating Memory SDR records.
 
-When `sdr list full` fails or returns empty, the add-on falls back to safer per-type queries (`sdr type Temperature`, `Fan`, `Voltage`, `Current`, `Power Supply`). It does **not** query `sdr type Memory`. Responses keep the same `sensors` / `states` / `statuses` JSON shape; the additive capability `sdr_fallback_by_type` is advertised when present.
+When `ipmitool` crashes during `sdr list full` (or it succeeds with no output), the add-on falls back to safer per-type queries (`sdr type Temperature`, `Fan`, `Voltage`, `Current`, `Power Supply`). It does **not** query `sdr type Memory`. Ordinary connection failures (wrong interface, credentials or host) do not trigger the fallback. Responses keep the same `sensors` / `states` / `statuses` JSON shape; the additive capability `sdr_fallback_by_type` is advertised when present.
 
 Optional BMC-side workaround reported for M50CYP: enable Channel 3 / cipher suite 3 under RMCP+ settings, and/or set Extra params to `-C 3` on the connection profile.
 

@@ -1,8 +1,8 @@
 ## Unreleased
 
-- Fall back to per-type `sdr type` queries (Temperature, Fan, Voltage, Current, Power Supply) when `sdr list full` fails, segfaults, or returns empty — fixes Intel M50CYP / ipmitool 1.8.19 crashes ([home-assistant-ipmi#96](https://github.com/ateodorescu/home-assistant-ipmi/issues/96))
+- Fall back to per-type `sdr type` queries (Temperature, Fan, Voltage, Current, Power Supply) when `sdr list full` crashes (e.g. signal 11) or returns no output — fixes Intel M50CYP / ipmitool 1.8.19 crashes ([home-assistant-ipmi#96](https://github.com/ateodorescu/home-assistant-ipmi/issues/96))
 - Never query `sdr type Memory` (known crash trigger on those BMCs)
-- When `sensor_types` is a non-empty filter, query only the matching safe SDR types (skip `sdr list full`)
+- Clean failures (wrong interface, bad credentials, unreachable host) do not trigger the fallback, and a crashed `ipmitool` call is no longer retried with every cipher suite
 - Advertise additive capability `sdr_fallback_by_type`
 - Document BMC Channel 3 / cipher suite 3 workaround and Extra params `-C 3` for RMCP+ session issues
 

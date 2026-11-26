@@ -13,6 +13,7 @@ use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\RedirectResponse;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Process\Process;
+use Symfony\Component\Process\Exception\ProcessSignaledException;
 
 class IpmiController
 {
@@ -32,6 +33,9 @@ class IpmiController
     private array $debug = [];
     private string $password = '';
     private string $kgKey = '';
+    // True when the most recent ipmitool process crashed (e.g. SIGSEGV), as opposed
+    // to failing cleanly (bad credentials, wrong interface, unreachable host).
+    private bool $lastCommandCrashed = false;
     // Hard ceiling per ipmitool invoke. Keep below nginx/php-fpm (120s).
     const COMMAND_TIMEOUT = 45;
     const DEFAULT_PORT = 623;
@@ -515,6 +519,11 @@ class IpmiController
             return $result;
         }
 
+        // A crash is not a cipher-suite problem; retrying would just crash again.
+        if ($this->lastCommandCrashed) {
+            return false;
+        }
+
         // Super Micro / OpenSSL 3: try common RMCP+ cipher suites when default fails.
         // Suite 17 is modern but often unsupported; 3/8/12 are common on older BMCs.
         if (\in_array('lanplus', $command, true) && !\in_array('-C', $command, true)) {
@@ -541,6 +550,7 @@ class IpmiController
     private function executeIpmiCommand(array $command, bool $ignoreErrors = false): bool|string
     {
         $errorIntro = "Error occurred when running \"" . implode(" ", array_map($this->anonymizeSecrets(...), $command)) . "\".\n" ;
+        $this->lastCommandCrashed = false;
 
         try {
             $proc = new Process($command);
@@ -557,6 +567,9 @@ class IpmiController
             $exitCode = $proc->getExitCode();
 
             if ($exitCode) {
+                // 128 + SIGSEGV(11) / SIGABRT(6) / SIGBUS(7) / SIGILL(4) / SIGFPE(8)
+                $this->lastCommandCrashed = $proc->hasBeenSignaled()
+                    || \in_array($exitCode, [132, 134, 135, 136, 139], true);
                 $message = $this->anonymizeSecrets($errorIntro.$proc->getErrorOutput());
                 $this->debug[] = $message;
 
@@ -568,6 +581,9 @@ class IpmiController
             }
         }
         catch (\Exception $exception) {
+            // Symfony Process throws when ipmitool dies from a signal (e.g. SIGSEGV).
+            $this->lastCommandCrashed = $exception instanceof ProcessSignaledException;
+
             // let's log this error
             $message = $this->anonymizeSecrets($errorIntro . $exception->getMessage());
             $this->debug[] = $message;
@@ -858,25 +874,24 @@ class IpmiController
         ?array $requestedTypes = null
     ): bool
     {
-        // Non-empty sensor_types: skip full list and query matching sdr types only
-        // (faster/safer on BMCs that segfault on `sdr list full`).
-        $skipFullList = $requestedTypes !== null && count($requestedTypes) > 0;
+        $ret = $this->runCommand(array_merge($cmd, ['-I', $interface, 'sdr', 'list', 'full']), true);
 
-        if (!$skipFullList) {
-            $ret = $this->runCommand(array_merge($cmd, ['-I', $interface, 'sdr', 'list', 'full']), true);
+        if ($ret !== false && trim($ret) !== '') {
+            $this->parseSdrListFullOutput($ret, $sensorData, $states, $statuses, $requestedTypes);
 
-            if ($ret !== false && trim($ret) !== '') {
-                $this->parseSdrListFullOutput($ret, $sensorData, $states, $statuses, $requestedTypes);
-
-                return true;
-            }
-
-            $this->debug[] = 'sdr list full failed or empty; falling back to per-type SDR queries'
-                . ' (capability: ' . self::CAPABILITY_SDR_FALLBACK_BY_TYPE . ')';
-        } else {
-            $this->debug[] = 'sensor_types filter set; using per-type SDR queries'
-                . ' (capability: ' . self::CAPABILITY_SDR_FALLBACK_BY_TYPE . ')';
+            return true;
         }
+
+        // Only fall back when the BMC session demonstrably works (ipmitool crashed
+        // mid-listing, or succeeded with no output). A clean failure means wrong
+        // interface / credentials / host, so fail fast and let auto-detect move on.
+        if ($ret === false && !$this->lastCommandCrashed) {
+            return false;
+        }
+
+        $this->debug[] = ($ret === false ? 'sdr list full crashed' : 'sdr list full returned no output')
+            . '; falling back to per-type SDR queries'
+            . ' (capability: ' . self::CAPABILITY_SDR_FALLBACK_BY_TYPE . ')';
 
         return $this->extractFromSdrTypeFallback(
             $cmd,
@@ -953,7 +968,9 @@ class IpmiController
         array &$statuses,
         ?array $requestedTypes = null
     ): bool {
-        $anyUsable = false;
+        // Succeed when at least one per-type query ran cleanly, even if that type
+        // has no readings (a BMC without Current sensors is not a failed poll).
+        $anyOk = false;
 
         foreach (self::SDR_TYPE_FALLBACK_MAP as $bucket => $meta) {
             if (!$this->shouldIncludeSensorType($requestedTypes, $bucket)) {
@@ -970,11 +987,11 @@ class IpmiController
                 $states,
                 $statuses
             )) {
-                $anyUsable = true;
+                $anyOk = true;
             }
         }
 
-        return $anyUsable;
+        return $anyOk;
     }
 
     /**
@@ -1071,7 +1088,7 @@ class IpmiController
      * Typical `sdr type` line (5 columns):
      *   name | hex | status | entity | value units
      *
-     * @return bool true when at least one usable reading was stored
+     * @return bool true when the ipmitool query succeeded (readings may be empty)
      */
     private function getSensorsByType(
         array $cmd,
@@ -1088,11 +1105,10 @@ class IpmiController
             true
         );
 
-        if ($ret === false || trim($ret) === '') {
+        if ($ret === false) {
             return false;
         }
 
-        $anyUsable = false;
         $lines = explode(PHP_EOL, $ret);
 
         foreach ($lines as $line) {
@@ -1137,9 +1153,8 @@ class IpmiController
                 $value,
                 is_string($status) ? $status : null
             );
-            $anyUsable = true;
         }
 
-        return $anyUsable;
+        return true;
     }
 }
